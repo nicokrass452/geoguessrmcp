@@ -1,0 +1,21 @@
+{
+  "name": "geoguessr-mcp-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "web",
+    "mcp-server"
+  ],
+  "scripts": {
+    "build": "npm run build -w shared && npm run build -w web && npm run build -w mcp-server",
+    "dev": "npm run dev -w web",
+    "start": "npm run start -w web",
+    "mcp:stdio": "node mcp-server/dist/index.js --transport stdio",
+    "mcp:http": "node mcp-server/dist/index.js --transport http",
+    "mcp:sse": "node mcp-server/dist/index.js --transport sse",
+    "demo-agent": "node mcp-server/dist/demo-agent.js",
+    "typecheck": "npm run typecheck -w shared && npm run typecheck -w web && npm run typecheck -w mcp-server"
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "name": "@geoguessr-mcp/mcp-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "geoguessr-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev:stdio": "tsx src/index.ts --transport stdio",
+    "dev:http": "tsx src/index.ts --transport http",
+    "dev:sse": "tsx src/index.ts --transport sse",
+    "start:stdio": "node dist/index.js --transport stdio",
+    "start:http": "node dist/index.js --transport http",
+    "start:sse": "node dist/index.js --transport sse",
+    "demo": "node dist/demo-agent.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@geoguessr-mcp/shared": "*",
+    "@modelcontextprotocol/sdk": "^1.11.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "ws": "^8.18.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.13.4",
+    "@types/ws": "^8.5.14",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3"
+  }
+}
