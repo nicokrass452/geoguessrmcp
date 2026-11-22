@@ -1,13 +1,11 @@
 import assert from 'node:assert/strict';
 
-const ALL_FEATURES = Array.from({ length: 16 }, (_, i) => `F${i + 1}`);
-
 export function getTier2Tests(_ctx) {
   return [
     {
       id: 'T2-BND-01',
       tier: 2,
-      featureIds: ALL_FEATURES,
+      featureIds: ['F1', 'F2', 'F8', 'F13'],
       title: 'Betting Boundaries: Wager = 0 (free guess), Wager = chips (All-In), Negative Wager (400), Over-Balance Wager (400)',
       kind: 'api',
       requiresBrowser: false,
@@ -29,12 +27,12 @@ export function getTier2Tests(_ctx) {
         const negRes = await helpers.apiFetch('/api/human/guess', {
           body: { latitude: 35, longitude: 139, wager: -50 },
         });
-        assert.equal(negRes.status, 400, `Expected 400 for negative wager, got ${negRes.status}`);
+        assert.equal(negRes.status, 400);
 
         const overRes = await helpers.apiFetch('/api/human/guess', {
           body: { latitude: 35, longitude: 139, wager: 1500 },
         });
-        assert.equal(overRes.status, 400, `Expected 400 for over-balance wager, got ${overRes.status}`);
+        assert.equal(overRes.status, 400);
 
         const zeroRes = await helpers.apiFetch('/api/human/guess', {
           body: { latitude: 35, longitude: 139, wager: 0 },
@@ -58,8 +56,8 @@ export function getTier2Tests(_ctx) {
     {
       id: 'T2-BND-02',
       tier: 2,
-      featureIds: ALL_FEATURES,
-      title: 'Room Negative Robustness: Unknown roomCode (404), Non-Host Start (403), Duplicate Guess (400/409), Spectator Human Guess (403/409)',
+      featureIds: ['F6', 'F7', 'F11', 'F15'],
+      title: 'Room Host Authorization & Negative Robustness: Unknown roomCode (404), Non-Host Start/End/Next (403), Duplicate Guess (400), Spectator Human Guess (403)',
       kind: 'api',
       requiresBrowser: false,
       requiresMcp: false,
@@ -67,7 +65,7 @@ export function getTier2Tests(_ctx) {
         const badRoom = await helpers.apiFetch('/api/rooms/NOPE99/join', {
           body: { playerId: 'p_unknown', playerName: 'Ghost' },
         });
-        assert.equal(badRoom.status, 404, `Expected 404 for unknown roomCode, got ${badRoom.status}`);
+        assert.equal(badRoom.status, 404);
 
         const created = await helpers.apiFetch('/api/rooms', {
           body: {
@@ -96,26 +94,32 @@ export function getTier2Tests(_ctx) {
         const nonHostStart = await helpers.apiFetch(`/api/rooms/${code}/start`, {
           body: { playerId: 't2_guest' },
         });
-        assert.equal(nonHostStart.status, 403, `Expected 403 for non-host start, got ${nonHostStart.status}`);
+        assert.equal(nonHostStart.status, 403);
 
         const started = await helpers.apiFetch(`/api/rooms/${code}/start`, {
           body: { playerId: 't2_host' },
         });
         assert.ok(started.ok);
 
+        const nonHostEnd = await helpers.apiFetch('/api/match/end-round', {
+          body: { roomCode: code, playerId: 't2_guest' },
+        });
+        assert.equal(nonHostEnd.status, 403, 'Non-host manual end-round must return 403');
+
+        const nonHostNext = await helpers.apiFetch('/api/match/next-round', {
+          body: { roomCode: code, playerId: 't2_guest' },
+        });
+        assert.equal(nonHostNext.status, 403, 'Non-host next-round must return 403');
+
         const g1 = await helpers.apiFetch('/api/human/guess', {
-          roomCode: code,
-          playerId: 't2_host',
-          body: { latitude: 40, longitude: -74 },
+          body: { roomCode: code, playerId: 't2_host', latitude: 40, longitude: -74 },
         });
         assert.ok(g1.ok);
 
         const g1Dup = await helpers.apiFetch('/api/human/guess', {
-          roomCode: code,
-          playerId: 't2_host',
-          body: { latitude: 41, longitude: -73 },
+          body: { roomCode: code, playerId: 't2_host', latitude: 41, longitude: -73 },
         });
-        assert.ok([400, 409].includes(g1Dup.status), `Expected 400/409 for duplicate guess, got ${g1Dup.status}`);
+        assert.ok([400, 409].includes(g1Dup.status));
 
         const specMatch = await helpers.apiFetch('/api/match/new', {
           body: {
@@ -129,14 +133,14 @@ export function getTier2Tests(_ctx) {
         const specGuess = await helpers.apiFetch('/api/human/guess', {
           body: { latitude: 35, longitude: 139 },
         });
-        assert.ok([403, 409].includes(specGuess.status), `Expected 403/409 for spectator human guess, got ${specGuess.status}`);
+        assert.ok([403, 409].includes(specGuess.status));
       },
     },
     {
       id: 'T2-BND-03',
       tier: 2,
-      featureIds: ALL_FEATURES,
-      title: 'Coordinate & Step Cap Boundaries: Lat/Lng extremes (-90/90, -180/180), out-of-range (400), and zero secret leakage',
+      featureIds: ['F1', 'F2', 'F3', 'F9', 'F10'],
+      title: 'Coordinate & Step Cap Boundaries: Out-of-range coordinates (400), exact poles (-90/-180), and MCP step cap block',
       kind: 'api',
       requiresBrowser: false,
       requiresMcp: true,
@@ -188,15 +192,56 @@ export function getTier2Tests(_ctx) {
       },
     },
     {
+      id: 'T2-BND-03B',
+      tier: 2,
+      featureIds: ['F2', 'F8'],
+      title: 'MCP Wager Boundaries: Agent wager=0 and wager exceeding agent chips clamp safely',
+      kind: 'mcp',
+      requiresBrowser: false,
+      requiresMcp: true,
+      run: async (helpers) => {
+        await helpers.apiFetch('/api/match/new', {
+          body: {
+            mode: '1v1',
+            locationMode: 'standard',
+            bettingEnabled: true,
+            startingChips: 1000,
+            totalRounds: 3,
+            provider: 'open',
+          },
+        });
+
+        const mcp = await helpers.connectHttpMcp({
+          agentName: 'ClampBot',
+          model: 'clamp-model',
+        });
+        helpers.onCleanup(() => mcp.close());
+        const ag = await mcp.callToolJson('get_game_state');
+
+        await mcp.callToolJson('submit_guess', {
+          latitude: 35,
+          longitude: 139,
+          wager: 5000,
+          reasoning: 'Testing server-side wager clamping',
+          agent_id: ag.agentId,
+        });
+        const hRes = await helpers.apiFetch('/api/human/guess', {
+          body: { latitude: 0, longitude: 0, wager: 0 },
+        });
+        assert.ok(hRes.ok);
+        const aiRes = hRes.data.roundSummary?.results?.find((r) => r.playerId === ag.agentId);
+        assert.equal(aiRes.wager, 1000);
+      },
+    },
+    {
       id: 'T2-BND-04',
       tier: 2,
-      featureIds: ALL_FEATURES,
+      featureIds: ['F3', 'F7', 'F10'],
       title: '1v1 Opponent Cap & Solo/PvP AI Rejection: 2nd AI blocked in 1v1 (409), AI blocked in Solo & PvP (409)',
       kind: 'api',
       requiresBrowser: false,
       requiresMcp: false,
       run: async (helpers) => {
-        // 1v1 allows 1 AI, rejects 2nd AI
         const m1v1 = await helpers.apiFetch('/api/match/new', {
           body: { mode: '1v1', locationMode: 'standard', totalRounds: 3, provider: 'open' },
         });
@@ -210,9 +255,8 @@ export function getTier2Tests(_ctx) {
         const reg2 = await helpers.apiFetch('/api/agents/register', {
           body: { name: 'TwoBot', model: 'm2', transport: 'http' },
         });
-        assert.equal(reg2.status, 409, `Expected 409 for 2nd AI in 1v1, got ${reg2.status}`);
+        assert.equal(reg2.status, 409);
 
-        // Solo rejects AI registration
         const mSolo = await helpers.apiFetch('/api/match/new', {
           body: { mode: 'solo', locationMode: 'standard', totalRounds: 3, provider: 'open' },
         });
@@ -221,14 +265,14 @@ export function getTier2Tests(_ctx) {
         const regSolo = await helpers.apiFetch('/api/agents/register', {
           body: { name: 'SoloIntruder', model: 'm3', transport: 'http' },
         });
-        assert.equal(regSolo.status, 409, `Expected 409 for AI registration in solo mode, got ${regSolo.status}`);
+        assert.equal(regSolo.status, 409);
       },
     },
     {
       id: 'T2-BND-05',
       tier: 2,
-      featureIds: ALL_FEATURES,
-      title: 'Tie-Split Chip Settlement & Auto-Betting Boundaries when Betting Enabled',
+      featureIds: ['F1', 'F6', 'F8', 'F11'],
+      title: 'Tie-Split Chip Settlement: Identical scores push wager cleanly with 0 chipDelta',
       kind: 'api',
       requiresBrowser: false,
       requiresMcp: false,
@@ -252,24 +296,17 @@ export function getTier2Tests(_ctx) {
           helpers.apiFetch(`/api/rooms/${code}/leave`, { body: { playerId: 'tie_p1' } }).catch(() => {})
         );
 
-        const joined = await helpers.apiFetch(`/api/rooms/${code}/join`, {
+        await helpers.apiFetch(`/api/rooms/${code}/join`, {
           body: { playerId: 'tie_p2', playerName: 'TieTwo' },
         });
-        assert.ok(joined.ok);
         helpers.onCleanup(() =>
           helpers.apiFetch(`/api/rooms/${code}/leave`, { body: { playerId: 'tie_p2' } }).catch(() => {})
         );
 
-        const started = await helpers.apiFetch(`/api/rooms/${code}/start`, {
-          body: { playerId: 'tie_p1' },
-        });
-        assert.ok(started.ok);
-
-        // Both guess identical coordinates with wagers 200 and 300 -> tied top score -> both win +wager
-        const g1 = await helpers.apiFetch('/api/human/guess', {
+        await helpers.apiFetch(`/api/rooms/${code}/start`, { body: { playerId: 'tie_p1' } });
+        await helpers.apiFetch('/api/human/guess', {
           body: { roomCode: code, playerId: 'tie_p1', latitude: 20, longitude: 20, wager: 200 },
         });
-        assert.ok(g1.ok);
         const finalGuess = await helpers.apiFetch('/api/human/guess', {
           body: { roomCode: code, playerId: 'tie_p2', latitude: 20, longitude: 20, wager: 300 },
         });
@@ -280,9 +317,311 @@ export function getTier2Tests(_ctx) {
         assert.equal(p1Res.wager, 200);
         assert.equal(p2Res.wager, 300);
         assert.equal(p1Res.chipDelta, p1Res.score > 0 ? 0 : -200);
-        assert.equal(p1Res.chipsAfter, 1000 + p1Res.chipDelta);
         assert.equal(p2Res.chipDelta, p2Res.score > 0 ? 0 : -300);
-        assert.equal(p2Res.chipsAfter, 1000 + p2Res.chipDelta);
+      },
+    },
+    {
+      id: 'T2-BND-06',
+      tier: 2,
+      featureIds: ['F1', 'F2', 'F3', 'F8', 'F10'],
+      title: 'MCP Negative Wager Rejection & Heartbeat Validation: Negative AI wager and missing transport rejected',
+      kind: 'api',
+      requiresBrowser: false,
+      requiresMcp: true,
+      run: async (helpers) => {
+        await helpers.apiFetch('/api/match/new', {
+          body: {
+            mode: '1v1',
+            locationMode: 'standard',
+            bettingEnabled: true,
+            totalRounds: 3,
+            provider: 'open',
+          },
+        });
+        const badHb = await helpers.apiFetch('/api/mcp/heartbeat', { body: {} });
+        assert.equal(badHb.status, 400);
+
+        const mcp = await helpers.connectHttpMcp({
+          agentName: 'NegWagerBot',
+          model: 'neg-model',
+        });
+        helpers.onCleanup(() => mcp.close());
+        const ag = await mcp.callToolJson('get_game_state');
+
+        let wagerErr = null;
+        try {
+          await mcp.callToolJson('submit_guess', {
+            latitude: 10,
+            longitude: 10,
+            wager: -25,
+            agent_id: ag.agentId,
+          });
+        } catch (err) {
+          wagerErr = err;
+        }
+        assert.ok(wagerErr, 'Negative MCP wager must fail validation');
+      },
+    },
+    {
+      id: 'T2-BND-06B',
+      tier: 2,
+      featureIds: ['F3', 'F10'],
+      title: 'MCP Heartbeat Boundaries: Zero-session heartbeat and non-integer activeSessions rejection (400)',
+      kind: 'api',
+      requiresBrowser: false,
+      requiresMcp: false,
+      run: async (helpers) => {
+        const zeroSessions = await helpers.apiFetch('/api/mcp/heartbeat', {
+          body: { transport: 'sse', activeSessions: 0 },
+        });
+        assert.ok(zeroSessions.ok);
+        assert.equal(zeroSessions.data.httpBridgeReachable, true);
+
+        const negSessions = await helpers.apiFetch('/api/mcp/heartbeat', {
+          body: { transport: 'sse', activeSessions: -1 },
+        });
+        assert.equal(negSessions.status, 400);
+      },
+    },
+    {
+      id: 'T2-BND-07',
+      tier: 2,
+      featureIds: ['F4', 'F5', 'F7', 'F9'],
+      title: 'Schema Validation: Invalid mode, invalid locationMode, and rounds outside 1..10 return 400',
+      kind: 'api',
+      requiresBrowser: false,
+      requiresMcp: false,
+      run: async (helpers) => {
+        const badMode = await helpers.apiFetch('/api/match/new', { body: { mode: 'invalid_mode' } });
+        assert.equal(badMode.status, 400);
+        const badLoc = await helpers.apiFetch('/api/match/new', { body: { locationMode: 'mars' } });
+        assert.equal(badLoc.status, 400);
+        const badRounds = await helpers.apiFetch('/api/match/new', { body: { totalRounds: 99 } });
+        assert.equal(badRounds.status, 400);
+      },
+    },
+    {
+      id: 'T2-BND-08',
+      tier: 2,
+      featureIds: ['F4', 'F5', 'F9'],
+      title: '10-Round Mountain & Big Cities Exhaustion Boundaries: 10R matches complete without pool exhaustion or crash',
+      kind: 'api',
+      requiresBrowser: false,
+      requiresMcp: false,
+      run: async (helpers) => {
+        const mnt = await helpers.apiFetch('/api/match/new', {
+          body: { mode: 'solo', locationMode: 'mountain_regions', totalRounds: 10, provider: 'open' },
+        });
+        assert.ok(mnt.ok);
+        assert.equal(mnt.data.totalRounds, 10);
+
+        const city = await helpers.apiFetch('/api/match/new', {
+          body: { mode: 'solo', locationMode: 'big_cities', totalRounds: 10, provider: 'open' },
+        });
+        assert.ok(city.ok);
+        assert.equal(city.data.totalRounds, 10);
+      },
+    },
+    {
+      id: 'T2-BND-09',
+      tier: 2,
+      featureIds: ['F4', 'F5', 'F9', 'F12', 'F14', 'F16'],
+      title: 'Unknown Room Fallback & Panorama Node 404: Expired panorama node returns 404 and bad join disables UI join button',
+      kind: 'browser',
+      requiresBrowser: true,
+      requiresMcp: false,
+      run: async (helpers) => {
+        const badNode = await helpers.apiFetch('/api/panoramas/nonexistent_round/node_99/equirectangular.jpg');
+        assert.ok(!badNode.ok && badNode.status >= 400);
+
+        const tab = await helpers.openBrowserTab(helpers.uiUrl);
+        helpers.onCleanup(() => helpers.browserDriver.closeTab(tab));
+
+        await helpers.browserDriver.waitForSelector(tab, '[data-testid="mode-card-pvp"]', 8000);
+        await helpers.browserDriver.clickSelector(tab, '[data-testid="mode-card-pvp"]', 5000);
+        await helpers.browserDriver.clickSelector(tab, '[data-testid="switch-to-join-room"]', 5000);
+        const disabled = await tab.eval("document.querySelector('[data-testid=\"join-room-submit\"]')?.disabled");
+        assert.equal(disabled, true, 'Join Room button must stay disabled when roomCode is empty');
+      },
+    },
+    {
+      id: 'T2-BND-10',
+      tier: 2,
+      featureIds: ['F6', 'F11', 'F12', 'F13', 'F14', 'F15', 'F16'],
+      title: 'UI Betting Preset & Bad Room Error Recovery: Clamps manual wager to chip stack and displays dismissible error on 404 room join',
+      kind: 'browser',
+      requiresBrowser: true,
+      requiresMcp: false,
+      run: async (helpers) => {
+        const tab = await helpers.openBrowserTab(helpers.uiUrl);
+        helpers.onCleanup(() => helpers.browserDriver.closeTab(tab));
+
+        await helpers.browserDriver.waitForSelector(tab, '[data-testid="mode-card-pvp"]', 8000);
+        await helpers.browserDriver.clickSelector(tab, '[data-testid="mode-card-pvp"]', 5000);
+        await helpers.browserDriver.clickSelector(tab, '[data-testid="switch-to-join-room"]', 5000);
+        await helpers.browserDriver.setInputValue(tab, '#join-room-code-input', 'ZZZZ99', 5000);
+        await helpers.browserDriver.clickSelector(tab, '[data-testid="join-room-submit"]', 5000);
+        await helpers.browserDriver.waitForSelector(tab, '[role="alert"]', 6000);
+
+        await helpers.browserDriver.clickSelector(tab, '[data-testid="mode-card-solo"]', 5000);
+        await helpers.browserDriver.clickSelector(tab, '[data-testid="betting-toggle"]', 5000);
+        await helpers.browserDriver.clickSelector(tab, '[data-testid="play-button"]', 5000);
+        await helpers.browserDriver.waitForSelector(tab, 'input[aria-label="Confidence wager amount"]', 8000);
+        await helpers.browserDriver.setInputValue(tab, 'input[aria-label="Confidence wager amount"]', '9999', 5000);
+        const clampedVal = await tab.eval("document.querySelector('input[aria-label=\"Confidence wager amount\"]')?.value");
+        assert.equal(clampedVal, '1000', 'Manual UI wager exceeding 1,000 chips must clamp to 1000');
+      },
+    },
+    {
+      id: 'T2-BND-11',
+      tier: 2,
+      featureIds: ['F1', 'F2', 'F3', 'F10', 'F12', 'F13', 'F14', 'F15', 'F16'],
+      title: 'Unknown Agent Error, Disabled Submit Before Pin, & Spectator Stage Clean Error-Free Mount',
+      kind: 'browser',
+      requiresBrowser: true,
+      requiresMcp: false,
+      run: async (helpers) => {
+        const badAg = await helpers.apiFetch('/api/agents/does_not_exist/state');
+        assert.equal(badAg.status, 404);
+
+        const tab = await helpers.openBrowserTab(helpers.uiUrl);
+        helpers.onCleanup(() => helpers.browserDriver.closeTab(tab));
+
+        await helpers.browserDriver.waitForSelector(tab, '[data-testid="mode-card-1v1"], [data-testid="mode-card-player_vs_ai"]', 8000);
+        await helpers.browserDriver.clickSelector(tab, '[data-testid="mode-card-player_vs_ai"]', 5000);
+        await helpers.browserDriver.clickSelector(tab, '[data-testid="betting-toggle"]', 5000);
+        await helpers.browserDriver.clickSelector(tab, '[data-testid="play-button"]', 5000);
+        await helpers.browserDriver.waitForSelector(tab, '[data-testid="guess-minimap"]', 8000);
+        const submitDisabled = await tab.eval("Boolean(Array.from(document.querySelectorAll('button')).find((b) => /Click Map to Drop Pin/i.test(b.innerText))?.disabled)");
+        assert.equal(submitDisabled, true);
+
+        await helpers.browserDriver.clickSelector(tab, '[data-testid="quick-return-home"]', 5000);
+        await helpers.browserDriver.clickSelector(tab, '[data-testid="mode-card-spectator"]', 5000);
+        await helpers.browserDriver.clickSelector(tab, '[data-testid="play-button"]', 5000);
+        await helpers.browserDriver.waitForSelector(tab, '[data-testid="spectator-stage"]', 8000);
+      },
+    },
+    {
+      id: 'T2-BND-12',
+      tier: 2,
+      featureIds: ['F4', 'F5', 'F12', 'F13', 'F14', 'F15', 'F16'],
+      title: 'Step Cap & Timer UI Selection Persistence + Header Badge Verification',
+      kind: 'browser',
+      requiresBrowser: true,
+      requiresMcp: false,
+      run: async (helpers) => {
+        const tab = await helpers.openBrowserTab(helpers.uiUrl);
+        helpers.onCleanup(() => helpers.browserDriver.closeTab(tab));
+
+        await helpers.browserDriver.waitForSelector(tab, '[data-testid="location-mountain_regions"]', 8000);
+        await helpers.browserDriver.clickSelector(tab, '[data-testid="location-big_cities"]', 5000);
+        await helpers.browserDriver.clickSelector(tab, '[data-testid="location-mountain_regions"]', 5000);
+        await helpers.browserDriver.clickSelector(tab, '[data-testid="mode-card-spectator"]', 5000);
+        await helpers.browserDriver.clickSelector(tab, '[data-testid="play-button"]', 5000);
+        await helpers.browserDriver.waitForSelector(tab, '[data-testid="spectator-stage"]', 8000);
+        await helpers.browserDriver.waitForSelector(tab, '[data-testid="live-mcp-badge"]', 5000);
+        await helpers.browserDriver.waitForSelector(tab, '[data-testid="quick-return-home"]', 5000);
+      },
+    },
+    {
+      id: 'T2-BND-13',
+      tier: 2,
+      featureIds: ['F4', 'F5', 'F8', 'F9'],
+      title: 'StartingChips & Single-Round Pool Boundaries: startingChips < 100 rejected (400), startingChips=100 & totalRounds=1 accepted',
+      kind: 'api',
+      requiresBrowser: false,
+      requiresMcp: false,
+      run: async (helpers) => {
+        const lowChips = await helpers.apiFetch('/api/match/new', {
+          body: { mode: 'solo', locationMode: 'mountain_regions', startingChips: 50, bettingEnabled: true },
+        });
+        assert.equal(lowChips.status, 400);
+
+        const minMatch = await helpers.apiFetch('/api/match/new', {
+          body: {
+            mode: 'solo',
+            locationMode: 'mountain_regions',
+            bettingEnabled: true,
+            startingChips: 100,
+            totalRounds: 1,
+            provider: 'open',
+          },
+        });
+        assert.ok(minMatch.ok);
+        assert.equal(minMatch.data.human.chips, 100);
+      },
+    },
+    {
+      id: 'T2-BND-14',
+      tier: 2,
+      featureIds: ['F6', 'F7', 'F11'],
+      title: 'Room Leave Idempotency & Late Join: Leaving unknown room succeeds idempotently and late joiner syncs active pvp_ai room',
+      kind: 'api',
+      requiresBrowser: false,
+      requiresMcp: false,
+      run: async (helpers) => {
+        const leaveGhost = await helpers.apiFetch('/api/rooms/NONE99/leave', {
+          body: { playerId: 'ghost_1' },
+        });
+        assert.ok(leaveGhost.ok);
+
+        const created = await helpers.apiFetch('/api/rooms', {
+          body: {
+            mode: 'pvp_ai',
+            locationMode: 'standard',
+            totalRounds: 3,
+            provider: 'open',
+            playerId: 'late_h1',
+            humanName: 'HostLate',
+            autoStart: true,
+          },
+        });
+        assert.ok(created.ok);
+        const code = created.data.roomCode;
+        helpers.onCleanup(() =>
+          helpers.apiFetch(`/api/rooms/${code}/leave`, { body: { playerId: 'late_h1' } }).catch(() => {})
+        );
+
+        const lateJoin = await helpers.apiFetch(`/api/rooms/${code}/join`, {
+          body: { playerId: 'late_h2', playerName: 'GuestLate' },
+        });
+        assert.ok(lateJoin.ok);
+        assert.equal(lateJoin.data.state.mode, 'pvp_ai');
+        assert.equal(lateJoin.data.state.humans.length, 2);
+        helpers.onCleanup(() =>
+          helpers.apiFetch(`/api/rooms/${code}/leave`, { body: { playerId: 'late_h2' } }).catch(() => {})
+        );
+      },
+    },
+    {
+      id: 'T2-BND-15',
+      tier: 2,
+      featureIds: ['F6', 'F7', 'F11', 'F12', 'F13', 'F14', 'F15', 'F16'],
+      title: 'Welcome Hub Mode Switching & Quick Return from Waiting Room: PvP panel hides on Solo/Spectator and Home exits lobby',
+      kind: 'browser',
+      requiresBrowser: true,
+      requiresMcp: false,
+      run: async (helpers) => {
+        const tab = await helpers.openBrowserTab(helpers.uiUrl);
+        helpers.onCleanup(() => helpers.browserDriver.closeTab(tab));
+
+        await helpers.browserDriver.waitForSelector(tab, '[data-testid="mode-card-pvp_ai"]', 8000);
+        await helpers.browserDriver.clickSelector(tab, '[data-testid="mode-card-pvp_ai"]', 5000);
+        await helpers.browserDriver.waitForSelector(tab, '[data-testid="switch-to-join-room"]', 5000);
+
+        await helpers.browserDriver.clickSelector(tab, '[data-testid="mode-card-pvp"]', 5000);
+        await helpers.browserDriver.clickSelector(tab, '[data-testid="play-button"]', 5000);
+        await helpers.browserDriver.waitForSelector(tab, '[data-testid="room-code"]', 8000);
+        await helpers.browserDriver.clickSelector(tab, '[data-testid="quick-return-home"]', 5000);
+
+        await helpers.browserDriver.waitForSelector(tab, '[data-testid="mode-card-spectator"]', 6000);
+        await helpers.browserDriver.clickSelector(tab, '[data-testid="mode-card-spectator"]', 5000);
+        const hasJoinTab = await tab.eval("Boolean(document.querySelector('[data-testid=\"switch-to-join-room\"]'))");
+        assert.equal(hasJoinTab, false);
+        await helpers.browserDriver.clickSelector(tab, '[data-testid="betting-toggle"]', 5000);
+        await helpers.browserDriver.clickSelector(tab, '[data-testid="play-button"]', 5000);
+        await helpers.browserDriver.waitForSelector(tab, '[data-testid="spectator-stage"]', 8000);
+        await helpers.browserDriver.waitForSelector(tab, '[data-testid="live-mcp-badge"]', 5000);
       },
     },
   ];

@@ -255,10 +255,10 @@ async function setFieldByLabel(helpers, tab, labelPatterns, value, opts = {}) {
 }
 
 async function dropLeafletPin(helpers, tab, relX = 0.5, relY = 0.5) {
-  const rect = await helpers.browserDriver.waitForCondition(
+  const initialRect = await helpers.browserDriver.waitForCondition(
     tab,
     `(() => {
-      const el = document.querySelector('.leaflet-container');
+      const el = document.querySelector('[data-testid="guess-minimap"] .leaflet-container');
       if (!el) return false;
       const st = window.getComputedStyle(el);
       if (st.display === 'none' || st.visibility === 'hidden') return false;
@@ -269,8 +269,30 @@ async function dropLeafletPin(helpers, tab, relX = 0.5, relY = 0.5) {
     10000
   );
 
-  // Brief settle for Leaflet invalidateSize timer
-  await helpers.sleep(280);
+  // Move pointer onto minimap to trigger hover-to-expand and wait for CSS/invalidateSize settle
+  if (tab.engine === 'cdp' && tab.browser?.cdp) {
+    const hoverX = Math.round(initialRect.left + initialRect.width * 0.5);
+    const hoverY = Math.round(initialRect.top + initialRect.height * 0.5);
+    await tab.browser.cdp.send(
+      'Input.dispatchMouseEvent',
+      { type: 'mouseMoved', x: hoverX, y: hoverY, button: 'none', clickCount: 0 },
+      tab.sessionId
+    );
+  }
+  await helpers.sleep(300);
+
+  // Re-read rect after hover expansion settled
+  const rect = await helpers.browserDriver.waitForCondition(
+    tab,
+    `(() => {
+      const el = document.querySelector('[data-testid="guess-minimap"] .leaflet-container');
+      if (!el) return false;
+      const r = el.getBoundingClientRect();
+      if (r.width <= 40 || r.height <= 40) return false;
+      return { left: r.left, top: r.top, width: r.width, height: r.height };
+    })()`,
+    5000
+  );
 
   const x = Math.round(rect.left + rect.width * relX);
   const y = Math.round(rect.top + rect.height * relY);
@@ -293,7 +315,7 @@ async function dropLeafletPin(helpers, tab, relX = 0.5, relY = 0.5) {
     );
   } else {
     await tab.eval(`(() => {
-      const target = document.elementFromPoint(${x}, ${y}) || document.querySelector('.leaflet-container');
+      const target = document.elementFromPoint(${x}, ${y}) || document.querySelector('[data-testid="guess-minimap"] .leaflet-container');
       for (const type of ['mousedown', 'mouseup', 'click']) {
         target.dispatchEvent(new MouseEvent(type, {
           bubbles: true,
@@ -463,7 +485,7 @@ async function extractRoomCodeFromTab(helpers, tab) {
         if (m) return m[1];
       }
       const txt = (document.body && document.body.innerText) || '';
-      const m = txt.match(/Room\\s*(?:Code)?\\s*[:#]?\\s*([A-Z0-9]{4,12})\\b/i);
+      const m = txt.match(/Room\\s+Code\\s*[:#]\\s*([A-Z0-9]{4,12})\\b/i);
       return m ? m[1].toUpperCase() : false;
     })()`,
     8000

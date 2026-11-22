@@ -152,7 +152,6 @@ export function RoundSummaryOverlay({
       zoom: 4,
       attributionControl: false,
     });
-    el.classList.remove('leaflet-container');
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 18,
@@ -222,10 +221,7 @@ export function RoundSummaryOverlay({
       <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-white/15 bg-slate-900 shadow-2xl">
         {/* Map Section */}
         <div className="relative h-64 sm:h-80 w-full shrink-0 border-b border-white/10">
-          <div
-            ref={mapElRef}
-            className="relative h-full w-full overflow-hidden bg-slate-900 outline-none [&_img]:!max-w-none [&_img]:!max-h-none [&_svg]:!max-w-none [&_svg]:!max-h-none"
-          />
+          <div ref={mapElRef} className="h-full w-full" />
           <div className="pointer-events-none absolute top-3 left-3 z-[450] flex items-center gap-2 rounded-xl border border-emerald-400/30 bg-slate-950/90 px-3 py-1.5 backdrop-blur-md shadow-lg">
             <Flag className="h-4 w-4 text-emerald-400" />
             <div>

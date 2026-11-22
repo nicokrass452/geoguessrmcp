@@ -80,6 +80,7 @@ const AgyConfigSchema = z.object({
 
 const AgyTriggerSchema = z.object({
   models: z.array(z.string().min(1)).optional(),
+  roomCode: z.string().trim().min(1).max(24).optional(),
 });
 
 const McpHeartbeatSchema = z.object({
@@ -549,7 +550,8 @@ export function createApiRouter(
         return;
       }
       const parsed = AgyTriggerSchema.parse(req.body ?? {});
-      res.json(agyRunner.triggerCurrentRound(parsed.models));
+      const ctx = extractContext(req, parsed);
+      res.json(agyRunner.triggerCurrentRound(parsed.models, ctx.roomCode));
     } catch (err) {
       handleError(res, err);
     }

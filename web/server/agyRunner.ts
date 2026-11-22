@@ -27,6 +27,7 @@ interface ActiveProcessEntry {
   agentId: string;
   modelId: string;
   roundNumber: number;
+  roomCode: string;
 }
 
 function findAgyBinary(): string | null {
@@ -66,8 +67,13 @@ function killProcessTree(child: ChildProcess): void {
   }
 }
 
-export function modelIdToAgentId(modelId: string): string {
-  return `agy_${modelId.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+export function modelIdToAgentId(modelId: string, roomCode?: string): string {
+  const base = `agy_${modelId.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+  const cleanRoom = roomCode?.trim().toUpperCase();
+  if (!cleanRoom || cleanRoom === 'ARENA1' || cleanRoom === 'DEFAULT') {
+    return base;
+  }
+  return `${base}_${cleanRoom.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
 }
 
 export class AgyRunner {
@@ -87,8 +93,11 @@ export class AgyRunner {
 
   private readonly activeProcs = new Map<string, ActiveProcessEntry>();
   private readonly runStates = new Map<string, AgyBotRunState>();
-  private currentRoundNumber = 1;
-  private roundActive = true;
+  private readonly roomRoundState = new Map<
+    string,
+    { roundNumber: number; active: boolean }
+  >();
+  private activeRoomCode = 'ARENA1';
 
   constructor(config: ServerConfig, engine: GameEngine) {
     this.config = config;
@@ -122,17 +131,38 @@ export class AgyRunner {
     };
   }
 
-  public onMatchReset(): void {
-    this.stopAllActiveRuns('Match restarted', false);
+  private resolveRoomCode(roomCode?: string): string {
+    const clean = roomCode?.trim().toUpperCase();
+    if (!clean || clean === 'DEFAULT') return this.activeRoomCode;
+    return clean;
   }
 
-  public onRoundStarted(roundNumber: number): void {
-    this.stopAllActiveRuns('Round transitioned', false);
-    this.currentRoundNumber = roundNumber;
-    this.roundActive = true;
+  private getRoomRoundState(roomCode?: string): {
+    roundNumber: number;
+    active: boolean;
+  } {
+    const code = this.resolveRoomCode(roomCode);
+    let st = this.roomRoundState.get(code);
+    if (!st) {
+      st = { roundNumber: 1, active: true };
+      this.roomRoundState.set(code, st);
+    }
+    return st;
+  }
+
+  public onMatchReset(roomCode?: string): void {
+    const targetRoom = this.resolveRoomCode(roomCode);
+    this.stopRoomRuns(targetRoom, 'Match restarted', false);
+  }
+
+  public onRoundStarted(roundNumber: number, roomCode?: string): void {
+    const targetRoom = this.resolveRoomCode(roomCode);
+    this.activeRoomCode = targetRoom;
+    this.stopRoomRuns(targetRoom, 'Round transitioned', false);
+    this.roomRoundState.set(targetRoom, { roundNumber, active: true });
 
     for (const modelId of this.selectedModels) {
-      const agentId = modelIdToAgentId(modelId);
+      const agentId = modelIdToAgentId(modelId, targetRoom);
       const state = this.runStates.get(agentId);
       if (state) {
         state.running = false;
@@ -145,13 +175,15 @@ export class AgyRunner {
     }
 
     if (this.autoPlayEnabled) {
-      this.triggerCurrentRound();
+      this.triggerCurrentRound(undefined, targetRoom);
     }
   }
 
-  public onRoundEnded(_roundNumber: number): void {
-    this.roundActive = false;
-    this.stopAllActiveRuns('Round ended', false);
+  public onRoundEnded(_roundNumber: number, roomCode?: string): void {
+    const targetRoom = this.resolveRoomCode(roomCode);
+    const st = this.getRoomRoundState(targetRoom);
+    st.active = false;
+    this.stopRoomRuns(targetRoom, 'Round ended', false);
   }
 
   public updateConfig(opts: {
@@ -181,42 +213,56 @@ export class AgyRunner {
       );
       const removed = this.selectedModels.filter((m) => !nextModels.includes(m));
       for (const oldModelId of removed) {
-        const agentId = modelIdToAgentId(oldModelId);
-        this.stopSingleRun(agentId, 'Deselected by player');
-        this.runStates.delete(agentId);
-        this.engine.removeManagedAgent(agentId);
+        const prefix = `${modelIdToAgentId(oldModelId)}`;
+        for (const agentId of Array.from(
+          new Set([prefix, ...this.activeProcs.keys(), ...this.runStates.keys()])
+        )) {
+          if (agentId === prefix || agentId.startsWith(`${prefix}_`)) {
+            this.stopSingleRun(agentId, 'Deselected by player');
+            this.runStates.delete(agentId);
+            this.engine.removeManagedAgent(agentId);
+          }
+        }
       }
       this.selectedModels = nextModels;
     }
 
     // Ensure selected models are visible/updated in GameEngine when auto-play is enabled
+    const targetRoom = this.activeRoomCode;
+    const roomState = this.getRoomRoundState(targetRoom);
     if (this.autoPlayEnabled) {
       for (const modelId of this.selectedModels) {
         const opt = AVAILABLE_AGY_MODELS.find((m) => m.id === modelId);
         if (!opt) continue;
         this.engine.registerManagedAgent({
-          agentId: modelIdToAgentId(opt.id),
+          agentId: modelIdToAgentId(opt.id, targetRoom),
           name: opt.label,
           model: opt.id,
           maxExplorationCalls: this.maxStepsPerRound,
+          roomCode: targetRoom,
         });
       }
-      if (this.roundActive && (!prevAuto || opts.selectedModels)) {
-        this.triggerCurrentRound();
+      if (roomState.active && (!prevAuto || opts.selectedModels)) {
+        this.triggerCurrentRound(undefined, targetRoom);
       }
     }
 
-    this.engine.notifyStateChanged();
+    this.engine.notifyStateChanged(targetRoom);
     return this.getStatus();
   }
 
-  public triggerCurrentRound(overrideModels?: string[]): AgyRunnerStatus {
+  public triggerCurrentRound(
+    overrideModels?: string[],
+    roomCode?: string
+  ): AgyRunnerStatus {
     if (!this.agyPath) {
       throw new Error(
         'agy.exe CLI binary was not found on this machine. Install Antigravity CLI or set AGY_BIN.'
       );
     }
-    if (!this.roundActive) {
+    const targetRoom = this.resolveRoomCode(roomCode);
+    const roomState = this.getRoomRoundState(targetRoom);
+    if (!roomState.active) {
       throw new Error('Cannot summon AI opponents while the round is over.');
     }
 
@@ -225,7 +271,7 @@ export class AgyRunner {
       .filter((m): m is AgyModelOption => Boolean(m));
 
     for (const model of targets) {
-      const agentId = modelIdToAgentId(model.id);
+      const agentId = modelIdToAgentId(model.id, targetRoom);
       if (this.activeProcs.has(agentId)) continue;
 
       const registered = this.engine.registerManagedAgent({
@@ -233,21 +279,23 @@ export class AgyRunner {
         name: model.label,
         model: model.id,
         maxExplorationCalls: this.maxStepsPerRound,
+        roomCode: targetRoom,
       });
 
       if (registered.hasGuessed) continue;
 
-      this.spawnAgyBot(model, agentId, this.currentRoundNumber);
+      this.spawnAgyBot(model, agentId, roomState.roundNumber, targetRoom);
     }
 
-    this.engine.notifyStateChanged();
+    this.engine.notifyStateChanged(targetRoom);
     return this.getStatus();
   }
 
   private spawnAgyBot(
     model: AgyModelOption,
     agentId: string,
-    roundNumber: number
+    roundNumber: number,
+    roomCode: string
   ): void {
     if (!this.agyPath) return;
 
@@ -323,6 +371,7 @@ export class AgyRunner {
           GEOGUESSR_AGENT_ID: agentId,
           GEOGUESSR_AGENT_NAME: model.label,
           GEOGUESSR_AGENT_MODEL: model.id,
+          GEOGUESSR_ROOM_CODE: roomCode,
           GAME_BACKEND_URL: `http://localhost:${this.config.port}`,
         },
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -368,7 +417,7 @@ export class AgyRunner {
           `\n=== Closed (timeout after ${this.timeoutSec}s) | ${new Date().toISOString()} ===\n`
         );
       }
-      this.engine.notifyStateChanged();
+      this.engine.notifyStateChanged(roomCode);
     }, (this.timeoutSec + 12) * 1000);
 
     this.activeProcs.set(agentId, {
@@ -378,6 +427,7 @@ export class AgyRunner {
       agentId,
       modelId: model.id,
       roundNumber,
+      roomCode,
     });
 
     child.on('error', (err) => {
@@ -396,7 +446,7 @@ export class AgyRunner {
       }
       this.engine.logAgentActivity(agentId, 'error', `Spawn failed: ${err.message}`);
       this.engine.setManagedAgentRoundAvailability(agentId, false, 'disconnected');
-      this.engine.notifyStateChanged();
+      this.engine.notifyStateChanged(roomCode);
     });
 
     child.on('exit', (code) => {
@@ -416,7 +466,7 @@ export class AgyRunner {
       if (info?.hasGuessed) {
         runState.lastStatus = 'submitted';
         runState.lastMessage = 'Submitted guess and exited cleanly';
-      } else if (!this.roundActive) {
+      } else if (!this.getRoomRoundState(roomCode).active) {
         runState.lastStatus = 'stopped';
         runState.lastMessage = 'Round closed before guess';
       } else {
@@ -437,8 +487,30 @@ export class AgyRunner {
           `\n=== Closed (exit code ${code ?? 'unknown'}: ${runState.lastStatus}) | ${new Date().toISOString()} ===\n`
         );
       }
-      this.engine.notifyStateChanged();
+      this.engine.notifyStateChanged(roomCode);
     });
+  }
+
+  private stopRoomRuns(
+    roomCode: string,
+    reason: string,
+    notify = false
+  ): void {
+    const targetRoom = this.resolveRoomCode(roomCode);
+    const ids = Array.from(this.activeProcs.entries())
+      .filter(([, entry]) => entry.roomCode === targetRoom)
+      .map(([id]) => id);
+    const roomActive = this.getRoomRoundState(targetRoom).active;
+    for (const id of ids) {
+      this.stopSingleRun(id, reason);
+      const info = this.engine.getAgentInfo(id);
+      if (roomActive && info && !info.hasGuessed) {
+        this.engine.setManagedAgentRoundAvailability(id, false, 'idle');
+      }
+    }
+    if (notify) {
+      this.engine.notifyStateChanged(targetRoom);
+    }
   }
 
   private stopSingleRun(agentId: string, reason: string): void {
@@ -466,16 +538,28 @@ export class AgyRunner {
     reason = 'Stopped by player',
     notify = true
   ): AgyRunnerStatus {
-    const ids = Array.from(this.activeProcs.keys());
-    for (const id of ids) {
+    const entries = Array.from(this.activeProcs.entries());
+    const touchedRooms = new Set<string>();
+    for (const [id, entry] of entries) {
+      touchedRooms.add(entry.roomCode);
       this.stopSingleRun(id, reason);
       const info = this.engine.getAgentInfo(id);
-      if (this.roundActive && info && !info.hasGuessed) {
+      if (
+        this.getRoomRoundState(entry.roomCode).active &&
+        info &&
+        !info.hasGuessed
+      ) {
         this.engine.setManagedAgentRoundAvailability(id, false, 'idle');
       }
     }
     if (notify) {
-      this.engine.notifyStateChanged();
+      if (touchedRooms.size === 0) {
+        this.engine.notifyStateChanged(this.activeRoomCode);
+      } else {
+        for (const r of touchedRooms) {
+          this.engine.notifyStateChanged(r);
+        }
+      }
     }
     return this.getStatus();
   }

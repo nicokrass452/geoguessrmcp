@@ -372,8 +372,8 @@ export function WelcomeHub({
                   Player vs Player vs AI
                 </div>
                 <p className="mt-1 text-[11px] text-slate-400 leading-snug">
-                  Multi-human WebSocket sync competing together against live MCP
-                  AI models.
+                  Multi-human room sync via WebSocket competing together against
+                  live MCP AI models.
                 </p>
               </div>
             </button>
@@ -404,8 +404,8 @@ export function WelcomeHub({
                   Player vs Player
                 </div>
                 <p className="mt-1 text-[11px] text-slate-400 leading-snug">
-                  Head-to-head human duel with instant code sync across browser
-                  tabs.
+                  Head-to-head human room duel with instant room-code sync across
+                  browser tabs.
                 </p>
               </div>
             </button>
@@ -484,7 +484,7 @@ export function WelcomeHub({
                 <div className="flex items-center gap-2 text-xs font-bold text-emerald-300">
                   <Users className="h-4 w-4" />
                   <span>
-                    Multiplayer Lobby Sync ({effectiveMode.toUpperCase()})
+                    Multiplayer Room Sync ({effectiveMode.toUpperCase()})
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -493,20 +493,20 @@ export function WelcomeHub({
                       <button
                         type="button"
                         data-testid="mode-create-room-tab"
-                        aria-label="Create Room →"
+                        aria-label="Create Room"
                         onClick={() => setRoomAction('create')}
                         className="rounded-xl border border-sky-400/50 bg-sky-500/20 px-3 py-1.5 text-xs font-bold text-sky-200 transition"
                       >
-                        Create Room →
+                        Create Room
                       </button>
                       <button
                         type="button"
                         data-testid="switch-to-join-room"
-                        aria-label="Join Room →"
+                        aria-label="Join Room"
                         onClick={() => setRoomAction('join')}
                         className="rounded-xl border border-emerald-400/40 bg-emerald-500/15 px-3 py-1.5 text-xs font-bold text-emerald-200 hover:bg-emerald-500/25 transition"
                       >
-                        Join Room →
+                        Join Room
                       </button>
                     </>
                   ) : (
@@ -529,7 +529,7 @@ export function WelcomeHub({
                       htmlFor="join-room-code-input"
                       className="mb-1 block text-[11px] font-semibold text-slate-300"
                     >
-                      Room Code (ID)
+                      Room Code
                     </label>
                     <input
                       id="join-room-code-input"
@@ -568,7 +568,7 @@ export function WelcomeHub({
                     onClick={handleJoinSubmit}
                     className="rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-extrabold text-slate-950 hover:bg-emerald-400 disabled:opacity-40 transition"
                   >
-                    {starting ? 'Joining...' : 'Join Room →'}
+                    {starting ? 'Joining...' : 'Join Room'}
                   </button>
                 </div>
               )}

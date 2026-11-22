@@ -123,12 +123,13 @@ interface RoomRuntime {
   colorCursor: number;
   humanColorCursor: number;
   timerHandle: NodeJS.Timeout | null;
+  lastActivityAt: number;
 }
 
 export interface EngineLifecycleHooks {
-  onRoundStarted?: (roundNumber: number) => void;
-  onRoundEnded?: (roundNumber: number) => void;
-  onMatchReset?: () => void;
+  onRoundStarted?: (roundNumber: number, roomCode: string) => void;
+  onRoundEnded?: (roundNumber: number, roomCode: string) => void;
+  onMatchReset?: (roomCode: string) => void;
   getAgyStatus?: () => AgyRunnerStatus;
 }
 
@@ -182,6 +183,7 @@ export class GameEngine {
   private httpBridgeReachable = false;
   private lastSerializedMcpStatus = '';
   private mcpPollHandle: NodeJS.Timeout | null = null;
+  private roomPruneHandle: NodeJS.Timeout | null = null;
 
   constructor(config: ServerConfig, wsHub: WsHub) {
     this.config = config;
@@ -240,7 +242,33 @@ export class GameEngine {
       roundDurationSec: null,
       provider: this.config.defaultProvider,
     });
+    if (!this.roomPruneHandle) {
+      this.roomPruneHandle = setInterval(() => {
+        this.pruneIdleRooms();
+      }, 5 * 60 * 1000);
+      this.roomPruneHandle.unref?.();
+    }
     void this.refreshMcpBridgeProbe();
+  }
+
+  private pruneIdleRooms(ttlMs = 30 * 60 * 1000): void {
+    const now = Date.now();
+    for (const [code, room] of this.rooms.entries()) {
+      if (code === this.activeRoomCode) continue;
+      const anyConnectedHuman = Array.from(room.humans.values()).some(
+        (h) => h.connected
+      );
+      if (anyConnectedHuman) continue;
+      if (now - room.lastActivityAt <= ttlMs) continue;
+
+      this.stopRoomTimer(room);
+      for (const agId of room.agents.keys()) {
+        if (this.agentToRoom.get(agId) === code) {
+          this.agentToRoom.delete(agId);
+        }
+      }
+      this.rooms.delete(code);
+    }
   }
 
   // ==================== MCP Telemetry ====================
@@ -387,11 +415,6 @@ export class GameEngine {
     this.lastSerializedMcpStatus = sig;
 
     this.wsHub.broadcast({ type: 'mcp_status_updated', mcpStatus });
-    for (const room of this.rooms.values()) {
-      if (room.currentRound) {
-        this.broadcastRoomStateSync(room);
-      }
-    }
   }
 
   // ==================== Room Resolution ====================
@@ -527,6 +550,7 @@ export class GameEngine {
     hostPlayerId: string;
     state: PublicGameState;
   }> {
+    this.pruneIdleRooms();
     let code = opts.roomCode?.trim().toUpperCase() || '';
     if (!code || code === 'DEFAULT' || this.rooms.has(code)) {
       do {
@@ -587,6 +611,7 @@ export class GameEngine {
       );
     }
 
+    room.lastActivityAt = Date.now();
     this.broadcastRoomStateSync(room);
     return {
       roomCode: room.roomCode,
@@ -609,6 +634,7 @@ export class GameEngine {
       throw new Error('Only the room host can start the match.');
     }
 
+    room.lastActivityAt = Date.now();
     this.activeRoomCode = room.roomCode;
     if (room.matchStatus === 'lobby') {
       room.matchStatus = 'active';
@@ -659,14 +685,13 @@ export class GameEngine {
       }
     }
 
+    room.lastActivityAt = Date.now();
     const anyConnectedHuman = Array.from(room.humans.values()).some(
       (h) => h.connected
     );
     if (!anyConnectedHuman && room.mode !== 'spectator') {
       this.stopRoomTimer(room);
-      if (room.roomCode === this.activeRoomCode) {
-        this.lifecycleHooks.onMatchReset?.();
-      }
+      this.lifecycleHooks.onMatchReset?.(room.roomCode);
     } else {
       this.checkRoundCompletion(room);
     }
@@ -689,7 +714,7 @@ export class GameEngine {
         this.agentToRoom.delete(agId);
       }
     }
-    this.lifecycleHooks.onMatchReset?.();
+    this.lifecycleHooks.onMatchReset?.(code);
 
     const mode: GameMode = opts.mode ?? existing?.mode ?? 'ffa';
     const locationMode: LocationMode =
@@ -740,6 +765,7 @@ export class GameEngine {
       colorCursor: 0,
       humanColorCursor: 0,
       timerHandle: null,
+      lastActivityAt: Date.now(),
     };
 
     this.rooms.set(code, room);
@@ -764,6 +790,7 @@ export class GameEngine {
 
   private async setupRound(room: RoomRuntime, roundNumber: number): Promise<void> {
     this.stopRoomTimer(room);
+    room.lastActivityAt = Date.now();
     room.currentRoundNumber = roundNumber;
     room.timeRemainingSec = room.roundDurationSec;
 
@@ -861,7 +888,7 @@ export class GameEngine {
       room.mode !== 'solo' &&
       room.mode !== 'pvp'
     ) {
-      this.lifecycleHooks.onRoundStarted?.(roundNumber);
+      this.lifecycleHooks.onRoundStarted?.(roundNumber, room.roomCode);
     }
   }
 
@@ -1762,6 +1789,7 @@ export class GameEngine {
   ): { accepted: true; agentState: AgentGameState } {
     const { room, agent } = this.requireAgentWithRoom(agentId);
     this.lastMcpActivityAt = Date.now();
+    room.lastActivityAt = Date.now();
     if (room.currentRound.status !== 'active') {
       throw new Error('Round is already over. Wait for the next round.');
     }
@@ -1894,6 +1922,7 @@ export class GameEngine {
     opts?: { roomCode?: string; playerId?: string; wager?: number }
   ): PublicGameState {
     const room = this.resolveRoom(opts?.roomCode, opts?.playerId);
+    room.lastActivityAt = Date.now();
     if (room.mode === 'spectator') {
       throw new Error(
         'Spectator mode is AI-only; human players cannot submit guesses.'
@@ -2035,13 +2064,23 @@ export class GameEngine {
     playerId?: string
   ): PublicGameState {
     const room = this.resolveRoom(roomCode, playerId);
+    if (
+      reason === 'manual' &&
+      (room.mode === 'pvp' || room.mode === 'pvp_ai')
+    ) {
+      const callerId = playerId?.trim();
+      if (callerId && room.hostPlayerId && callerId !== room.hostPlayerId) {
+        throw new Error('Only the room host can end the round early.');
+      }
+    }
     if (room.currentRound.status === 'round_over') {
       return this.getPublicState(room.roomCode, playerId);
     }
 
+    room.lastActivityAt = Date.now();
     this.stopRoomTimer(room);
     room.currentRound.status = 'round_over';
-    this.lifecycleHooks.onRoundEnded?.(room.currentRoundNumber);
+    this.lifecycleHooks.onRoundEnded?.(room.currentRoundNumber, room.roomCode);
 
     const target = room.currentRound.scene.targetInfo;
     const humanParticipants =
@@ -2172,6 +2211,13 @@ export class GameEngine {
     playerId?: string;
   }): Promise<PublicGameState> {
     const room = this.resolveRoom(opts?.roomCode, opts?.playerId);
+    if (room.mode === 'pvp' || room.mode === 'pvp_ai') {
+      const callerId = opts?.playerId?.trim();
+      if (callerId && room.hostPlayerId && callerId !== room.hostPlayerId) {
+        throw new Error('Only the room host can advance to the next round.');
+      }
+    }
+    room.lastActivityAt = Date.now();
     if (room.matchStatus === 'finished') {
       return this.getPublicState(room.roomCode, opts?.playerId);
     }

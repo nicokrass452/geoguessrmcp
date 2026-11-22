@@ -78,7 +78,7 @@ export function GuessingMiniMap({
   const [collapsed, setCollapsed] = useState(false);
   const [pinnedOpen, setPinnedOpen] = useState(false);
   const [maximized, setMaximized] = useState(false);
-  const hovered = false;
+  const [hovered, setHovered] = useState(false);
   const [selectedCoords, setSelectedCoords] = useState<{
     lat: number;
     lng: number;
@@ -139,32 +139,6 @@ export function GuessingMiniMap({
     }
   };
 
-  const handleMapPointerEvent = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (hasGuessedRef.current) return;
-    const target = e.target as HTMLElement | null;
-    if (target?.closest('.leaflet-control')) return;
-    const map = mapRef.current;
-    const el = mapDivRef.current;
-    if (!map || !el) return;
-    try {
-      const latlng = map.mouseEventToLatLng(e.nativeEvent);
-      if (latlng && Number.isFinite(latlng.lat) && Number.isFinite(latlng.lng)) {
-        placePinAtLatLng(latlng.lat, latlng.lng);
-        return;
-      }
-    } catch {
-      // Fall back to bounding box interpolation
-    }
-    const r = el.getBoundingClientRect();
-    if (r.width > 0 && r.height > 0) {
-      const relX = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
-      const relY = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
-      const lat = 70 - relY * 140;
-      const lng = -160 + relX * 320;
-      placePinAtLatLng(lat, lng);
-    }
-  };
-
   useEffect(() => {
     const el = mapDivRef.current;
     if (!el || mapRef.current) return;
@@ -185,10 +159,23 @@ export function GuessingMiniMap({
       placePinAtLatLng(evt.latlng.lat, evt.latlng.lng);
     });
 
-    const onDomPointerCapture = (evt: MouseEvent) => {
+    let pointerDownPos: { x: number; y: number } | null = null;
+    const onDomMouseDownCapture = (evt: MouseEvent) => {
+      pointerDownPos = { x: evt.clientX, y: evt.clientY };
+    };
+
+    const onDomClickCapture = (evt: MouseEvent) => {
       if (hasGuessedRef.current) return;
       const target = evt.target as HTMLElement | null;
       if (target?.closest('.leaflet-control')) return;
+      if (pointerDownPos) {
+        const dx = evt.clientX - pointerDownPos.x;
+        const dy = evt.clientY - pointerDownPos.y;
+        pointerDownPos = null;
+        if (Math.hypot(dx, dy) >= 6) {
+          return;
+        }
+      }
       try {
         const latlng = map.mouseEventToLatLng(evt);
         if (latlng && Number.isFinite(latlng.lat) && Number.isFinite(latlng.lng)) {
@@ -206,8 +193,8 @@ export function GuessingMiniMap({
       }
     };
 
-    el.addEventListener('mouseup', onDomPointerCapture, { capture: true });
-    el.addEventListener('click', onDomPointerCapture, { capture: true });
+    el.addEventListener('mousedown', onDomMouseDownCapture, { capture: true });
+    el.addEventListener('click', onDomClickCapture, { capture: true });
 
     mapRef.current = map;
 
@@ -220,8 +207,8 @@ export function GuessingMiniMap({
 
     return () => {
       active = false;
-      el.removeEventListener('mouseup', onDomPointerCapture, { capture: true });
-      el.removeEventListener('click', onDomPointerCapture, { capture: true });
+      el.removeEventListener('mousedown', onDomMouseDownCapture, { capture: true });
+      el.removeEventListener('click', onDomClickCapture, { capture: true });
       ro.disconnect();
       map.remove();
       mapRef.current = null;
@@ -306,7 +293,10 @@ export function GuessingMiniMap({
 
   return (
     <div
-      className={`absolute bottom-5 right-5 z-30 flex max-h-[calc(100vh-6rem)] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-2xl border border-white/15 bg-slate-950/90 backdrop-blur-md shadow-2xl ${boxSizeClass}`}
+      data-testid="guess-minimap"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className={`absolute bottom-5 right-5 z-30 flex max-h-[calc(100vh-6rem)] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-2xl border border-white/15 bg-slate-950/90 backdrop-blur-md shadow-2xl transition-all duration-200 ${boxSizeClass}`}
     >
       {/* Header Bar */}
       <div className="flex items-center justify-between border-b border-white/10 px-3 py-2 text-xs">
@@ -365,8 +355,6 @@ export function GuessingMiniMap({
 
       {/* Leaflet Canvas */}
       <div
-        onMouseUp={handleMapPointerEvent}
-        onClick={handleMapPointerEvent}
         className={`relative min-h-0 flex-1 ${collapsed ? 'hidden' : 'block'}`}
       >
         <div ref={mapDivRef} className="h-full w-full" />

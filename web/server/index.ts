@@ -24,9 +24,11 @@ async function main() {
   const engine = new GameEngine(config, wsHub);
   const agyRunner = new AgyRunner(config, engine);
   engine.setLifecycleHooks({
-    onRoundStarted: (roundNum) => agyRunner.onRoundStarted(roundNum),
-    onRoundEnded: (roundNum) => agyRunner.onRoundEnded(roundNum),
-    onMatchReset: () => agyRunner.onMatchReset(),
+    onRoundStarted: (roundNum, roomCode) =>
+      agyRunner.onRoundStarted(roundNum, roomCode),
+    onRoundEnded: (roundNum, roomCode) =>
+      agyRunner.onRoundEnded(roundNum, roomCode),
+    onMatchReset: (roomCode) => agyRunner.onMatchReset(roomCode),
     getAgyStatus: () => agyRunner.getStatus(),
   });
   await engine.init();

@@ -429,7 +429,10 @@ export default function App() {
           initialCamera={state.human.camera}
           availableMoves={state.human.availableMoves}
           mapillaryImageId={state.human.mapillaryImageId}
-          mapillaryAccessToken={health?.mapillaryAccessToken}
+          // Server-side Mapillary equirectangular panoramas load via /api/panoramas/... without exposing server tokens
+          mapillaryAccessToken={
+            import.meta.env.VITE_MAPILLARY_CLIENT_TOKEN || null
+          }
           disabled={
             state.roundStatus === 'round_over' ||
             state.matchStatus === 'finished'
