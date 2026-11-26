@@ -624,5 +624,108 @@ export function getTier2Tests(_ctx) {
         await helpers.browserDriver.waitForSelector(tab, '[data-testid="live-mcp-badge"]', 5000);
       },
     },
+    {
+      id: 'T2-BND-16',
+      tier: 2,
+      featureIds: ['F1', 'F6', 'F11'],
+      title: 'Session Auth & Room Routing Guards: PvP room never hijacks default /api/match/new, and omitted/invalid tokens return 403/4003',
+      kind: 'api',
+      requiresBrowser: false,
+      requiresMcp: false,
+      run: async (helpers) => {
+        const created = await helpers.apiFetch('/api/rooms', {
+          headers: { 'X-Session-Auto': '1' },
+          body: {
+            mode: 'pvp',
+            locationMode: 'standard',
+            totalRounds: 3,
+            provider: 'open',
+            playerId: 'sec_host',
+            humanName: 'SecHost',
+            autoStart: true,
+          },
+        });
+        assert.ok(created.ok, `Expected room creation ok, got ${created.status}`);
+        const code = created.data.roomCode;
+        const hostId = created.data.hostPlayerId;
+        const hostToken = created.data.sessionToken;
+        assert.ok(hostToken, 'Expected auto-issued sessionToken on room creation');
+
+        helpers.onCleanup(() =>
+          helpers
+            .apiFetch(`/api/rooms/${encodeURIComponent(code)}/leave`, {
+              headers: { 'X-Session-Token': hostToken },
+              body: { playerId: hostId },
+            })
+            .catch(() => {})
+        );
+
+        // 1. Another user calling /api/match/new without roomCode must reset ARENA1, not collide with active PvP room
+        const soloStart = await helpers.apiFetch('/api/match/new', {
+          body: {
+            mode: 'solo',
+            locationMode: 'standard',
+            totalRounds: 3,
+            provider: 'open',
+            humanName: 'OtherSoloUser',
+          },
+        });
+        assert.ok(soloStart.ok, `Expected /api/match/new without roomCode to succeed, got ${soloStart.status}`);
+        assert.equal(soloStart.data.roomCode, 'ARENA1');
+
+        // 2. Omitting playerId or passing bogus playerId on token-bound PvP room must NOT mutate or read host state
+        const hijackOmit = await helpers.apiFetch('/api/human/guess', {
+          body: { roomCode: code, latitude: 10, longitude: 20 },
+        });
+        assert.equal(hijackOmit.status, 403, `Expected 403 when omitting playerId, got ${hijackOmit.status}`);
+
+        const hijackBogus = await helpers.apiFetch('/api/human/guess', {
+          body: { roomCode: code, playerId: 'unknown_attacker', latitude: 10, longitude: 20 },
+        });
+        assert.ok(
+          [400, 403].includes(hijackBogus.status),
+          `Expected 400/403 for unknown playerId, got ${hijackBogus.status}`
+        );
+
+        const readOmit = await helpers.apiFetch(`/api/match?roomCode=${encodeURIComponent(code)}`);
+        assert.equal(readOmit.status, 403, `Expected 403 reading token-bound room without playerId, got ${readOmit.status}`);
+
+        const readHost = await helpers.apiFetch(
+          `/api/match?roomCode=${encodeURIComponent(code)}&playerId=${encodeURIComponent(hostId)}`
+        );
+        assert.equal(readHost.status, 403, `Expected 403 reading host state without token, got ${readHost.status}`);
+
+        // 3. Invalid X-Session-Token on join with X-Session-Auto must return 403, not mint a duplicate guest
+        const badJoin = await helpers.apiFetch(`/api/rooms/${encodeURIComponent(code)}/join`, {
+          headers: {
+            'X-Session-Auto': '1',
+            'X-Session-Token': 'gs.fake.123.bad',
+          },
+          body: { playerId: hostId, playerName: 'Spoofer' },
+        });
+        assert.equal(badJoin.status, 403, `Expected 403 on invalid session token join, got ${badJoin.status}`);
+
+        // 4. Unauthenticated WS to token-bound room must close with 4003
+        for (const wsOpts of [
+          { wsUrl: helpers.wsUrl, roomCode: code, playerId: hostId },
+          { wsUrl: helpers.wsUrl, roomCode: code },
+        ]) {
+          const probe = await helpers.connectUiWs(wsOpts);
+          helpers.onCleanup(() => probe.close());
+          const closeCode = await new Promise((resolve) => {
+            if (probe.ws.readyState === 3) {
+              resolve(4003);
+              return;
+            }
+            const t = setTimeout(() => resolve(null), 3000);
+            probe.ws.once('close', (c) => {
+              clearTimeout(t);
+              resolve(c);
+            });
+          });
+          assert.equal(closeCode, 4003, `Expected WS close 4003, got ${closeCode}`);
+        }
+      },
+    },
   ];
 }

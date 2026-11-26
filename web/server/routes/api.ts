@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { HealthInfo } from '@geoguessr-mcp/shared';
 import type { AgyRunner } from '../agyRunner.js';
 import type { GameEngine } from '../gameEngine.js';
+import type { SessionAuth } from '../sessionAuth.js';
 
 const NewMatchSchema = z.object({
   mode: z
@@ -30,7 +31,13 @@ const NewMatchSchema = z.object({
 
 const JoinRoomSchema = z.object({
   playerId: z.string().trim().min(1).max(80).optional(),
-  playerName: z.string().trim().min(1).max(40),
+  playerName: z.string().trim().min(1).max(40).optional(),
+  preserveExistingName: z.boolean().optional(),
+});
+
+const SessionSchema = z.object({
+  playerId: z.string().trim().min(1).max(80).optional(),
+  displayName: z.string().trim().min(1).max(40).optional(),
 });
 
 const RoomActionSchema = z.object({
@@ -89,15 +96,39 @@ const McpHeartbeatSchema = z.object({
   agentId: z.string().trim().min(1).max(80).optional(),
 });
 
+interface ExtractedContext {
+  roomCode?: string;
+  playerId?: string;
+  tokenVerified: boolean;
+  hasRawToken: boolean;
+  sessionToken?: string;
+  autoIssue: boolean;
+}
+
 function extractContext(
   req: Request,
-  body?: { roomCode?: string; playerId?: string }
-): { roomCode?: string; playerId?: string } {
+  body?: { roomCode?: string; playerId?: string },
+  sessionAuth?: SessionAuth
+): ExtractedContext {
   const roomCode =
     body?.roomCode ||
     (typeof req.query.roomCode === 'string' ? req.query.roomCode : undefined) ||
     req.header('x-room-code') ||
     undefined;
+
+  const rawToken = sessionAuth?.extractTokenFromRequest(req);
+  const verified = rawToken ? sessionAuth?.verifyToken(rawToken) : null;
+  if (verified) {
+    return {
+      roomCode: roomCode?.trim() || undefined,
+      playerId: verified.playerId,
+      tokenVerified: true,
+      hasRawToken: true,
+      sessionToken: rawToken,
+      autoIssue: req.header('x-session-auto') === '1',
+    };
+  }
+
   const playerId =
     body?.playerId ||
     (typeof req.query.playerId === 'string' ? req.query.playerId : undefined) ||
@@ -106,6 +137,9 @@ function extractContext(
   return {
     roomCode: roomCode?.trim() || undefined,
     playerId: playerId?.trim() || undefined,
+    tokenVerified: false,
+    hasRawToken: Boolean(rawToken),
+    autoIssue: req.header('x-session-auto') === '1',
   };
 }
 
@@ -117,7 +151,8 @@ function handleError(res: Response, err: unknown): void {
     message.includes('Unknown roomCode') ||
     message.includes('Unknown panorama node')
       ? 404
-      : message.includes('Only the room host')
+      : message.includes('Only the room host') ||
+          message.includes('Valid session token required')
         ? 403
         : message.includes('1v1 mode') ||
             message.includes('AI agents cannot join') ||
@@ -129,9 +164,42 @@ function handleError(res: Response, err: unknown): void {
 
 export function createApiRouter(
   engine: GameEngine,
-  agyRunner?: AgyRunner
+  agyRunner?: AgyRunner,
+  sessionAuth?: SessionAuth
 ): Router {
   const router = Router();
+  const getCtx = (
+    req: Request,
+    body?: { roomCode?: string; playerId?: string }
+  ) => extractContext(req, body, sessionAuth);
+
+  router.post('/session', (req: Request, res: Response) => {
+    try {
+      const parsed = SessionSchema.parse(req.body ?? {});
+      const ctx = getCtx(req, { playerId: parsed.playerId });
+      if (ctx.tokenVerified && ctx.playerId && ctx.sessionToken) {
+        res.json({
+          playerId: ctx.playerId,
+          sessionToken: ctx.sessionToken,
+        });
+        return;
+      }
+      if (!sessionAuth) {
+        res.status(503).json({ error: 'Session auth unavailable' });
+        return;
+      }
+      const preferredPlayerId =
+        parsed.playerId && !engine.isRegisteredPlayerId(parsed.playerId)
+          ? parsed.playerId
+          : undefined;
+      const issued = sessionAuth.issueSession({
+        preferredPlayerId,
+      });
+      res.json(issued);
+    } catch (err) {
+      handleError(res, err);
+    }
+  });
 
   router.get('/health', (_req: Request, res: Response) => {
     const info: HealthInfo = {
@@ -172,7 +240,16 @@ export function createApiRouter(
   // Match & Public UI endpoints
   router.get('/match', (req: Request, res: Response) => {
     try {
-      const ctx = extractContext(req);
+      const ctx = getCtx(req);
+      if (
+        !ctx.tokenVerified &&
+        (ctx.hasRawToken ||
+          engine.isTokenBoundPlayer(ctx.roomCode, ctx.playerId))
+      ) {
+        throw new Error(
+          'Valid session token required to access this player state.'
+        );
+      }
       res.json(engine.getPublicState(ctx.roomCode, ctx.playerId));
     } catch (err) {
       handleError(res, err);
@@ -182,11 +259,12 @@ export function createApiRouter(
   router.post('/match/new', async (req: Request, res: Response) => {
     try {
       const parsed = NewMatchSchema.parse(req.body ?? {});
-      const ctx = extractContext(req, parsed);
+      const ctx = getCtx(req, parsed);
       const state = await engine.startNewMatch({
         ...parsed,
         roomCode: ctx.roomCode,
         playerId: ctx.playerId,
+        tokenVerified: ctx.tokenVerified,
         autoStart: parsed.autoStart ?? true,
       });
 
@@ -216,11 +294,28 @@ export function createApiRouter(
   router.post('/rooms', async (req: Request, res: Response) => {
     try {
       const parsed = NewMatchSchema.parse(req.body ?? {});
-      const ctx = extractContext(req, parsed);
+      let ctx = getCtx(req, parsed);
+      if (!ctx.tokenVerified && ctx.autoIssue && sessionAuth) {
+        const preferredPlayerId =
+          ctx.playerId && !engine.isRegisteredPlayerId(ctx.playerId)
+            ? ctx.playerId
+            : undefined;
+        const issued = sessionAuth.issueSession({
+          preferredPlayerId,
+        });
+        ctx = {
+          ...ctx,
+          playerId: issued.playerId,
+          tokenVerified: true,
+          sessionToken: issued.sessionToken,
+        };
+      }
+
       const created = await engine.createRoom({
         ...parsed,
         roomCode: parsed.roomCode,
         playerId: ctx.playerId,
+        tokenVerified: ctx.tokenVerified,
         autoStart: parsed.autoStart ?? false,
       });
 
@@ -244,6 +339,7 @@ export function createApiRouter(
       res.json({
         roomCode: created.roomCode,
         hostPlayerId: created.hostPlayerId,
+        ...(ctx.sessionToken ? { sessionToken: ctx.sessionToken } : {}),
         state: engine.getPublicState(created.roomCode, created.hostPlayerId),
       });
     } catch (err) {
@@ -254,12 +350,44 @@ export function createApiRouter(
   router.post('/rooms/:code/join', (req: Request, res: Response) => {
     try {
       const parsed = JoinRoomSchema.parse(req.body ?? {});
-      const ctx = extractContext(req, { playerId: parsed.playerId });
-      const joined = engine.joinRoom(String(req.params.code), {
+      const targetRoomCode = String(req.params.code);
+      let ctx = getCtx(req, { playerId: parsed.playerId });
+      if (ctx.hasRawToken && !ctx.tokenVerified) {
+        throw new Error(
+          'Valid session token required to join with a session token.'
+        );
+      }
+      if (
+        !ctx.tokenVerified &&
+        ctx.autoIssue &&
+        sessionAuth &&
+        !engine.isTokenBoundPlayer(targetRoomCode, ctx.playerId)
+      ) {
+        const preferredPlayerId =
+          ctx.playerId && !engine.isRegisteredPlayerId(ctx.playerId)
+            ? ctx.playerId
+            : undefined;
+        const issued = sessionAuth.issueSession({
+          preferredPlayerId,
+        });
+        ctx = {
+          ...ctx,
+          playerId: issued.playerId,
+          tokenVerified: true,
+          sessionToken: issued.sessionToken,
+        };
+      }
+
+      const joined = engine.joinRoom(targetRoomCode, {
         playerId: ctx.playerId,
-        playerName: parsed.playerName,
+        playerName: parsed.playerName || 'Player',
+        tokenVerified: ctx.tokenVerified,
+        preserveExistingName: parsed.preserveExistingName,
       });
-      res.json(joined);
+      res.json({
+        ...joined,
+        ...(ctx.sessionToken ? { sessionToken: ctx.sessionToken } : {}),
+      });
     } catch (err) {
       handleError(res, err);
     }
@@ -268,9 +396,10 @@ export function createApiRouter(
   router.post('/rooms/:code/start', async (req: Request, res: Response) => {
     try {
       const parsed = RoomActionSchema.parse(req.body ?? {});
-      const ctx = extractContext(req, parsed);
+      const ctx = getCtx(req, parsed);
       const started = await engine.startRoom(String(req.params.code), {
         playerId: ctx.playerId,
+        tokenVerified: ctx.tokenVerified,
       });
       res.json(started);
     } catch (err) {
@@ -281,9 +410,10 @@ export function createApiRouter(
   router.post('/rooms/:code/leave', (req: Request, res: Response) => {
     try {
       const parsed = RoomActionSchema.parse(req.body ?? {});
-      const ctx = extractContext(req, parsed);
+      const ctx = getCtx(req, parsed);
       const left = engine.leaveRoom(String(req.params.code), {
         playerId: ctx.playerId,
+        tokenVerified: ctx.tokenVerified,
       });
       res.json(left);
     } catch (err) {
@@ -294,8 +424,13 @@ export function createApiRouter(
   router.post('/match/end-round', (req: Request, res: Response) => {
     try {
       const parsed = RoomActionSchema.parse(req.body ?? {});
-      const ctx = extractContext(req, parsed);
-      const state = engine.endCurrentRound('manual', ctx.roomCode, ctx.playerId);
+      const ctx = getCtx(req, parsed);
+      const state = engine.endCurrentRound(
+        'manual',
+        ctx.roomCode,
+        ctx.playerId,
+        ctx.tokenVerified
+      );
       res.json(state);
     } catch (err) {
       handleError(res, err);
@@ -305,8 +440,12 @@ export function createApiRouter(
   router.post('/match/next-round', async (req: Request, res: Response) => {
     try {
       const parsed = RoomActionSchema.parse(req.body ?? {});
-      const ctx = extractContext(req, parsed);
-      const state = await engine.advanceToNextRound(ctx);
+      const ctx = getCtx(req, parsed);
+      const state = await engine.advanceToNextRound({
+        roomCode: ctx.roomCode,
+        playerId: ctx.playerId,
+        tokenVerified: ctx.tokenVerified,
+      });
       res.json(state);
     } catch (err) {
       handleError(res, err);
@@ -315,7 +454,7 @@ export function createApiRouter(
 
   router.get('/leaderboard', (req: Request, res: Response) => {
     try {
-      const ctx = extractContext(req);
+      const ctx = getCtx(req);
       res.json(engine.getLeaderboardPayload(ctx.roomCode));
     } catch (err) {
       handleError(res, err);
@@ -326,7 +465,7 @@ export function createApiRouter(
   router.post('/human/camera', (req: Request, res: Response) => {
     try {
       const parsed = CameraSchema.parse(req.body ?? {});
-      const ctx = extractContext(req, parsed);
+      const ctx = getCtx(req, parsed);
       res.json(
         engine.updateHumanCamera(
           parsed.heading,
@@ -343,13 +482,14 @@ export function createApiRouter(
   router.post('/human/move', (req: Request, res: Response) => {
     try {
       const parsed = MoveSchema.parse(req.body ?? {});
-      const ctx = extractContext(req, parsed);
+      const ctx = getCtx(req, parsed);
       res.json(
         engine.moveHuman({
           direction: parsed.direction,
           nodeId: parsed.nodeId ?? parsed.node_id,
           roomCode: ctx.roomCode,
           playerId: ctx.playerId,
+          tokenVerified: ctx.tokenVerified,
         })
       );
     } catch (err) {
@@ -360,7 +500,7 @@ export function createApiRouter(
   router.post('/human/return-to-start', (req: Request, res: Response) => {
     try {
       const parsed = RoomActionSchema.parse(req.body ?? {});
-      const ctx = extractContext(req, parsed);
+      const ctx = getCtx(req, parsed);
       res.json(engine.returnHumanToStart(ctx));
     } catch (err) {
       handleError(res, err);
@@ -370,11 +510,12 @@ export function createApiRouter(
   router.post('/human/guess', (req: Request, res: Response) => {
     try {
       const parsed = GuessSchema.parse(req.body ?? {});
-      const ctx = extractContext(req, parsed);
+      const ctx = getCtx(req, parsed);
       res.json(
         engine.submitHumanGuess(parsed.latitude, parsed.longitude, {
           roomCode: ctx.roomCode,
           playerId: ctx.playerId,
+          tokenVerified: ctx.tokenVerified,
           wager: parsed.wager,
         })
       );
@@ -388,12 +529,16 @@ export function createApiRouter(
     '/panoramas/:roundId/:nodeId/equirectangular.jpg',
     async (req: Request, res: Response) => {
       try {
-        const jpg = await engine.getRoundNodeEquirectangularJpeg(
-          String(req.params.roundId),
-          String(req.params.nodeId)
-        );
+        const { jpeg: jpg, isFallback } =
+          await engine.getRoundNodeEquirectangularJpegWithMeta(
+            String(req.params.roundId),
+            String(req.params.nodeId)
+          );
         res.setHeader('Content-Type', 'image/jpeg');
-        res.setHeader('Cache-Control', 'public, max-age=3600');
+        res.setHeader(
+          'Cache-Control',
+          isFallback ? 'no-store' : 'public, max-age=3600'
+        );
         res.send(jpg);
       } catch (err) {
         handleError(res, err);

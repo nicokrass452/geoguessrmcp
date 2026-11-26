@@ -9,6 +9,7 @@ import { loadServerConfig } from './config.js';
 import { AgyRunner } from './agyRunner.js';
 import { GameEngine } from './gameEngine.js';
 import { createApiRouter } from './routes/api.js';
+import { SessionAuth } from './sessionAuth.js';
 import { WsHub } from './wsHub.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -23,6 +24,7 @@ async function main() {
   const wsHub = new WsHub();
   const engine = new GameEngine(config, wsHub);
   const agyRunner = new AgyRunner(config, engine);
+  const sessionAuth = new SessionAuth(config.cacheDir);
   engine.setLifecycleHooks({
     onRoundStarted: (roundNum, roomCode) =>
       agyRunner.onRoundStarted(roundNum, roomCode),
@@ -33,7 +35,7 @@ async function main() {
   });
   await engine.init();
 
-  app.use('/api', createApiRouter(engine, agyRunner));
+  app.use('/api', createApiRouter(engine, agyRunner, sessionAuth));
 
   // Serve production frontend if built (`web/dist`)
   const distDir = path.resolve(__dirname, '..', 'dist');
@@ -57,22 +59,27 @@ async function main() {
 
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server, path: '/ws' });
-  wsHub.attach(wss, (socket, meta) => {
-    try {
-      wsHub.sendTo(socket, {
-        type: 'state_sync',
-        state: engine.getPublicState(
-          meta.roomCode !== 'DEFAULT' ? meta.roomCode : undefined,
-          meta.playerId
-        ),
-      });
-    } catch {
-      wsHub.sendTo(socket, {
-        type: 'state_sync',
-        state: engine.getPublicState(undefined, meta.playerId),
-      });
-    }
-  });
+  wsHub.attach(
+    wss,
+    (socket, meta) => {
+      try {
+        wsHub.sendTo(socket, {
+          type: 'state_sync',
+          state: engine.getPublicState(
+            meta.roomCode !== 'DEFAULT' ? meta.roomCode : undefined,
+            meta.playerId
+          ),
+        });
+      } catch {
+        wsHub.sendTo(socket, {
+          type: 'state_sync',
+          state: engine.getPublicState(undefined, meta.playerId),
+        });
+      }
+    },
+    (tok) => sessionAuth.verifyToken(tok)?.playerId ?? null,
+    (roomCode, playerId) => engine.isTokenBoundPlayer(roomCode, playerId)
+  );
 
   server.listen(config.port, () => {
     console.log(

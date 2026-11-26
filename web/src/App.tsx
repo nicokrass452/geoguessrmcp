@@ -1,5 +1,14 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Clock, Home, Play, User, Users } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Check,
+  Clock,
+  Copy,
+  Home,
+  Link2,
+  Play,
+  User,
+  Users,
+} from 'lucide-react';
 import type {
   HealthInfo,
   MoveDirection,
@@ -27,10 +36,20 @@ function mergeHttpState(
   return next;
 }
 import {
+  buildRoomInviteUrl,
+  clearSavedRoomSession,
+  copyTextToClipboard,
+  getAutoJoinPlayerName,
+  getSessionPlayerId,
   getSessionPlayerName,
+  getSessionToken,
   getSessionViewMode,
+  getUrlRoomCode,
+  restoreRoomSessionToTab,
+  saveRoomSession,
   setSessionPlayerName,
   setSessionViewMode,
+  syncUrlRoomCode,
 } from './lib/playerSession';
 import { useGameSocket } from './lib/useGameSocket';
 import { AgentHud } from './components/AgentHud';
@@ -46,6 +65,8 @@ import { WelcomeHub } from './components/WelcomeHub';
 export default function App() {
   const {
     playerId,
+    setPlayerId,
+    setSessionToken,
     roomCode,
     setRoomCode,
     state,
@@ -61,6 +82,24 @@ export default function App() {
   const [health, setHealth] = useState<HealthInfo | null>(null);
   const [showSetup, setShowSetup] = useState(false);
   const [busyAction, setBusyAction] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [autoJoiningCode, setAutoJoiningCode] = useState<string | null>(() =>
+    getUrlRoomCode()
+  );
+  const [lobbyNameDraft, setLobbyNameDraft] = useState<string>(() =>
+    getSessionPlayerName()
+  );
+  const handledUrlRoomRef = useRef<string | null>(null);
+  const copyCodeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyLinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyCodeTimerRef.current) clearTimeout(copyCodeTimerRef.current);
+      if (copyLinkTimerRef.current) clearTimeout(copyLinkTimerRef.current);
+    };
+  }, []);
 
   const setView = useCallback((next: 'home' | 'arena') => {
     setSessionViewMode(next);
@@ -71,6 +110,132 @@ export default function App() {
     if (health) return;
     api.getHealth().then(setHealth).catch(() => {});
   }, [health, wsConnected]);
+
+  useEffect(() => {
+    if (state?.human?.name) {
+      setLobbyNameDraft(state.human.name);
+    }
+  }, [state?.matchId, state?.roomCode, state?.human?.name]);
+
+  useEffect(() => {
+    if (getSessionToken() || getUrlRoomCode()) return;
+    let cancelled = false;
+    api
+      .ensureSession()
+      .then((session) => {
+        if (cancelled) return;
+        if (session.sessionToken) {
+          setSessionToken(session.sessionToken);
+        }
+        if (session.playerId) {
+          setPlayerId(session.playerId);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [setPlayerId, setSessionToken]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let pendingCode: string | null = null;
+    let settled = true;
+
+    const tryJoinFromUrl = () => {
+      if (cancelled) return;
+      const urlCode = getUrlRoomCode();
+      if (!urlCode) {
+        handledUrlRoomRef.current = null;
+        setAutoJoiningCode(null);
+        return;
+      }
+      if (handledUrlRoomRef.current === urlCode) {
+        setAutoJoiningCode(null);
+        return;
+      }
+      handledUrlRoomRef.current = urlCode;
+      pendingCode = urlCode;
+      settled = false;
+      setAutoJoiningCode(urlCode);
+      const restored = restoreRoomSessionToTab(urlCode);
+      const currentPid = getSessionPlayerId();
+      const activePlayerId = restored?.playerId || currentPid;
+      if (restored?.sessionToken) {
+        setSessionToken(restored.sessionToken);
+      }
+      if (restored?.playerId && restored.playerId !== currentPid) {
+        setPlayerId(restored.playerId);
+      }
+      const joinName = restored?.playerName || getAutoJoinPlayerName();
+      setSessionPlayerName(joinName);
+      setLobbyNameDraft(joinName);
+      api
+        .joinRoom(urlCode, joinName, activePlayerId, {
+          preserveExistingName: true,
+        })
+        .then((joined) => {
+          settled = true;
+          if (cancelled) return;
+          handledUrlRoomRef.current = joined.roomCode;
+          if (joined.sessionToken) {
+            setSessionToken(joined.sessionToken);
+          }
+          setPlayerId(joined.playerId);
+          saveRoomSession(joined.roomCode, {
+            playerId: joined.playerId,
+            sessionToken: joined.sessionToken || getSessionToken(),
+            playerName: joined.state.human.name,
+            isCreator: Boolean(joined.state.human.isHost),
+          });
+          setRoomCode(joined.roomCode);
+          syncUrlRoomCode(joined.roomCode);
+          setState(joined.state);
+          setLobbyNameDraft(joined.state.human.name);
+          setShowSetup(false);
+          setError(null);
+          setView('arena');
+        })
+        .catch((err) => {
+          settled = true;
+          if (cancelled) return;
+          const msg = err instanceof Error ? err.message : String(err);
+          handledUrlRoomRef.current = null;
+          if (
+            msg.includes('Unknown roomCode') ||
+            msg.includes('Valid session token required')
+          ) {
+            if (msg.includes('Valid session token required')) {
+              setSessionToken(null);
+            }
+            clearSavedRoomSession(urlCode);
+            syncUrlRoomCode(null);
+            setRoomCode(null);
+          }
+          setView('home');
+          setError(
+            msg.includes('Unknown roomCode')
+              ? `Room "${urlCode}" was not found or has expired. Create a new room or enter an active code.`
+              : msg
+          );
+        })
+        .finally(() => {
+          settled = true;
+          if (cancelled) return;
+          setAutoJoiningCode(null);
+        });
+    };
+
+    tryJoinFromUrl();
+    window.addEventListener('popstate', tryJoinFromUrl);
+    return () => {
+      cancelled = true;
+      if (!settled && pendingCode && handledUrlRoomRef.current === pendingCode) {
+        handledUrlRoomRef.current = null;
+      }
+      window.removeEventListener('popstate', tryJoinFromUrl);
+    };
+  }, [setPlayerId, setSessionToken, setRoomCode, setState, setView, setError]);
 
   const handleCameraChange = useCallback(
     (heading: number, pitch: number, zoom: number) => {
@@ -149,8 +314,11 @@ export default function App() {
           ...opts,
           playerId,
         });
+        handledUrlRoomRef.current = next.roomCode;
         setRoomCode(next.roomCode);
+        syncUrlRoomCode(next.roomCode);
         setState(next);
+        setLobbyNameDraft(next.human.name);
         setShowSetup(false);
         setView('arena');
       } catch (err) {
@@ -173,8 +341,21 @@ export default function App() {
           playerId,
           autoStart: false,
         });
+        if (created.sessionToken) {
+          setSessionToken(created.sessionToken);
+        }
+        setPlayerId(created.hostPlayerId);
+        saveRoomSession(created.roomCode, {
+          playerId: created.hostPlayerId,
+          sessionToken: created.sessionToken || getSessionToken(),
+          playerName: created.state.human.name,
+          isCreator: true,
+        });
+        handledUrlRoomRef.current = created.roomCode;
         setRoomCode(created.roomCode);
+        syncUrlRoomCode(created.roomCode);
         setState(created.state);
+        setLobbyNameDraft(created.state.human.name);
         setShowSetup(false);
         setView('arena');
       } catch (err) {
@@ -183,7 +364,7 @@ export default function App() {
         setBusyAction(false);
       }
     },
-    [playerId, setRoomCode, setState, setView, setError]
+    [playerId, setPlayerId, setSessionToken, setRoomCode, setState, setView, setError]
   );
 
   const handleJoinRoom = useCallback(
@@ -193,8 +374,21 @@ export default function App() {
       try {
         setSessionPlayerName(playerName);
         const joined = await api.joinRoom(targetCode, playerName, playerId);
+        if (joined.sessionToken) {
+          setSessionToken(joined.sessionToken);
+        }
+        setPlayerId(joined.playerId);
+        saveRoomSession(joined.roomCode, {
+          playerId: joined.playerId,
+          sessionToken: joined.sessionToken || getSessionToken(),
+          playerName: joined.state.human.name,
+          isCreator: Boolean(joined.state.human.isHost),
+        });
+        handledUrlRoomRef.current = joined.roomCode;
         setRoomCode(joined.roomCode);
+        syncUrlRoomCode(joined.roomCode);
         setState(joined.state);
+        setLobbyNameDraft(joined.state.human.name);
         setShowSetup(false);
         setView('arena');
       } catch (err) {
@@ -203,7 +397,7 @@ export default function App() {
         setBusyAction(false);
       }
     },
-    [playerId, setRoomCode, setState, setView, setError]
+    [playerId, setPlayerId, setSessionToken, setRoomCode, setState, setView, setError]
   );
 
   const handleStartWaitingRoom = useCallback(async () => {
@@ -225,8 +419,11 @@ export default function App() {
     const activeCode = state?.roomCode || roomCode;
     if (activeCode) {
       await api.leaveRoom(activeCode, playerId).catch(() => {});
+      clearSavedRoomSession(activeCode, playerId);
     }
     await api.stopAgyRuns().catch(() => {});
+    handledUrlRoomRef.current = null;
+    syncUrlRoomCode(null);
     setRoomCode(null);
     setShowSetup(false);
     setError(null);
@@ -240,6 +437,20 @@ export default function App() {
       setError(err instanceof Error ? err.message : String(err));
     }
   }, [setError]);
+
+  // 0. Auto-Joining Room via URL Link (?room=CODE)
+  if (autoJoiningCode) {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center bg-slate-950 text-slate-200 gap-3">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-400 border-t-transparent" />
+        <p className="text-sm font-semibold text-slate-200">
+          Joining Room{' '}
+          <span className="font-mono text-emerald-400">{autoJoiningCode}</span>
+          ...
+        </p>
+      </div>
+    );
+  }
 
   // 1. Welcome Hub View
   if (view === 'home') {
@@ -265,7 +476,7 @@ export default function App() {
   // 2. Loading Backend State
   if (!state) {
     return (
-      <div className="flex h-screen w-screen flex-col items-center justify-center bg-slate-950 text-slate-200 gap-3">
+      <div className="flex h-full w-full flex-col items-center justify-center bg-slate-950 text-slate-200 gap-3">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-sky-400 border-t-transparent" />
         <p className="text-sm text-slate-400">
           Connecting to GeoGuessr MCP Arena backend...
@@ -277,7 +488,10 @@ export default function App() {
         )}
         <button
           type="button"
-          onClick={() => setView('home')}
+          onClick={() => {
+            syncUrlRoomCode(null);
+            setView('home');
+          }}
           className="mt-2 rounded-xl border border-white/15 bg-slate-900 px-4 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800"
         >
           Return to Welcome Hub
@@ -294,9 +508,14 @@ export default function App() {
 
   // 3. Multi-Human Waiting Room Lobby (before Host clicks Start Match)
   if (state.matchStatus === 'lobby') {
+    const inviteUrl = state.roomCode ? buildRoomInviteUrl(state.roomCode) : '';
+    const trimmedDraft = lobbyNameDraft.trim();
+    const canRename =
+      trimmedDraft.length > 0 && trimmedDraft !== state.human.name;
+
     return (
-      <main className="flex min-h-screen w-screen items-center justify-center bg-slate-950 p-4 text-slate-100">
-        <div className="w-full max-w-xl rounded-3xl border border-white/15 bg-slate-900 p-6 shadow-2xl space-y-5">
+      <main className="flex h-full w-full flex-col overflow-y-auto overflow-x-hidden page-scrollbar bg-slate-950 p-4 sm:p-6 text-slate-100">
+        <div className="m-auto w-full max-w-xl rounded-3xl border border-white/15 bg-slate-900 p-5 sm:p-6 shadow-2xl space-y-5">
           <div className="flex items-center justify-between border-b border-white/10 pb-4">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-300">
@@ -307,8 +526,8 @@ export default function App() {
                   Multiplayer Room Lobby ({state.mode.toUpperCase()})
                 </h2>
                 <p className="text-xs text-slate-400">
-                  Share this room code with other players/tabs to synchronize
-                  over WebSocket
+                  Share the invite link for instant auto-join, or share the room
+                  code to join manually
                 </p>
               </div>
             </div>
@@ -323,29 +542,142 @@ export default function App() {
             </button>
           </div>
 
-          <div className="flex items-center justify-between rounded-2xl border border-emerald-400/30 bg-slate-950 px-5 py-4">
-            <div>
-              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                Room Code
+          <div className="rounded-2xl border border-emerald-400/30 bg-slate-950 p-4 sm:px-5 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    Room Code
+                  </div>
+                  <div
+                    data-testid="room-code"
+                    aria-label={`Room Code ${state.roomCode}`}
+                    className="mt-0.5 font-mono text-2xl font-extrabold tracking-widest text-emerald-400 select-all"
+                  >
+                    {state.roomCode}
+                  </div>
+                </div>
+                {state.roomCode && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void copyTextToClipboard(state.roomCode || '').then(
+                          (ok) => {
+                            if (!ok) return;
+                            setCopiedCode(true);
+                            if (copyCodeTimerRef.current) {
+                              clearTimeout(copyCodeTimerRef.current);
+                            }
+                            copyCodeTimerRef.current = setTimeout(
+                              () => setCopiedCode(false),
+                              1800
+                            );
+                          }
+                        );
+                      }}
+                      className="flex items-center gap-1.5 rounded-xl border border-white/15 bg-slate-900 px-3 py-1.5 text-xs font-bold text-slate-200 hover:border-emerald-400/50 hover:bg-slate-800 transition"
+                    >
+                      {copiedCode ? (
+                        <>
+                          <Check className="h-3.5 w-3.5 text-emerald-400" />
+                          <span className="text-emerald-300">Code Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-3.5 w-3.5 text-slate-400" />
+                          <span>Copy Code</span>
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="copy-invite-link"
+                      onClick={() => {
+                        void copyTextToClipboard(inviteUrl).then((ok) => {
+                          if (!ok) return;
+                          setCopiedLink(true);
+                          if (copyLinkTimerRef.current) {
+                            clearTimeout(copyLinkTimerRef.current);
+                          }
+                          copyLinkTimerRef.current = setTimeout(
+                            () => setCopiedLink(false),
+                            1800
+                          );
+                        });
+                      }}
+                      className="flex items-center gap-1.5 rounded-xl border border-emerald-400/45 bg-emerald-500/20 px-3 py-1.5 text-xs font-bold text-emerald-200 hover:bg-emerald-500/30 transition"
+                    >
+                      {copiedLink ? (
+                        <>
+                          <Check className="h-3.5 w-3.5 text-emerald-300" />
+                          <span>Link Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Link2 className="h-3.5 w-3.5 text-emerald-300" />
+                          <span>Copy Invite Link</span>
+                        </>
+                      )}
+                    </button>
+                  </>
+                )}
               </div>
-              <div
-                data-testid="room-code"
-                aria-label={`Room Code ${state.roomCode}`}
-                className="mt-0.5 font-mono text-2xl font-extrabold tracking-widest text-emerald-400"
+              <div className="text-right text-xs text-slate-400">
+                <div>{state.totalRounds} Rounds</div>
+                <div>
+                  {state.locationMode === 'big_cities'
+                    ? 'Big Cities Only'
+                    : state.locationMode === 'mountain_regions'
+                      ? 'Mountain Regions Only'
+                      : 'Standard'}
+                </div>
+              </div>
+            </div>
+
+            {inviteUrl && (
+              <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-900/80 px-3 py-2 text-[11px] font-mono text-sky-300 overflow-x-auto custom-scrollbar">
+                <Link2 className="h-3.5 w-3.5 shrink-0 text-sky-400" />
+                <span className="select-all whitespace-nowrap">{inviteUrl}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Inline Display Name Customizer (especially handy after URL auto-join) */}
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
+              <label
+                htmlFor="lobby-display-name"
+                className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-400"
               >
-                {state.roomCode}
-              </div>
+                Your Display Name
+              </label>
+              <input
+                id="lobby-display-name"
+                type="text"
+                maxLength={40}
+                value={lobbyNameDraft}
+                onChange={(e) => setLobbyNameDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && canRename && state.roomCode) {
+                    handleJoinRoom(state.roomCode, trimmedDraft);
+                  }
+                }}
+                className="w-full rounded-xl border border-white/15 bg-slate-950 px-3 py-2 text-xs text-white focus:border-sky-400 focus:outline-none"
+              />
             </div>
-            <div className="text-right text-xs text-slate-400">
-              <div>{state.totalRounds} Rounds</div>
-              <div>
-                {state.locationMode === 'big_cities'
-                  ? 'Big Cities Only'
-                  : state.locationMode === 'mountain_regions'
-                    ? 'Mountain Regions Only'
-                    : 'Standard'}
-              </div>
-            </div>
+            <button
+              type="button"
+              disabled={!canRename || busyAction || !state.roomCode}
+              onClick={() => {
+                if (state.roomCode && canRename) {
+                  handleJoinRoom(state.roomCode, trimmedDraft);
+                }
+              }}
+              className="rounded-xl border border-sky-400/40 bg-sky-500/20 px-3.5 py-2 text-xs font-bold text-sky-200 hover:bg-sky-500/30 disabled:opacity-40 transition"
+            >
+              Update Name
+            </button>
           </div>
 
           <div className="space-y-2">
@@ -409,7 +741,7 @@ export default function App() {
 
   // 4. Active Arena / Spectator Stage
   return (
-    <main className="relative h-screen w-screen overflow-hidden bg-slate-950">
+    <main className="relative h-full w-full overflow-hidden bg-slate-950">
       {state.mode === 'spectator' ? (
         <SpectatorStage
           roundNumber={state.currentRoundNumber}

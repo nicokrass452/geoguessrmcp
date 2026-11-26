@@ -53,8 +53,8 @@ export function LobbyModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md">
-      <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-white/15 bg-slate-900 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+      <div className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-white/15 bg-slate-900 shadow-2xl">
+        <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-5 py-4">
           <div className="flex items-center gap-2.5">
             <Globe2 className="h-5 w-5 text-sky-400" />
             <h2 className="text-base font-bold text-slate-100">Match Setup</h2>
@@ -68,7 +68,7 @@ export function LobbyModal({
           </button>
         </div>
 
-        <div className="space-y-4 p-5 text-xs">
+        <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 p-5 text-xs">
           <div>
             <label className="mb-1.5 block font-semibold text-slate-300">
               Your Display Name
@@ -86,7 +86,7 @@ export function LobbyModal({
             <label className="mb-1.5 block font-semibold text-slate-300">
               Game Mode
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {(
                 [
                   { id: 'ffa', label: 'Free-For-All', desc: 'Multi-MCP AI' },
@@ -119,7 +119,7 @@ export function LobbyModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="mb-1.5 block font-semibold text-slate-300">
                 Location Gamemode
@@ -159,7 +159,7 @@ export function LobbyModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="mb-1.5 block font-semibold text-slate-300">
                 Rounds
@@ -240,7 +240,7 @@ export function LobbyModal({
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-white/10 bg-slate-950/60 px-5 py-3.5">
+        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-white/10 bg-slate-950/60 px-5 py-3.5">
           <button
             type="button"
             onClick={onClose}

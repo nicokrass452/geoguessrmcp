@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Bot,
   Building2,
@@ -26,6 +26,7 @@ import type {
   PanoramaProviderChoice,
 } from '@geoguessr-mcp/shared';
 import type { StartMatchPayload } from '../lib/api';
+import { extractRoomCodeInput } from '../lib/playerSession';
 
 const FALLBACK_MODELS: AgyModelOption[] = [
   { id: 'gemini-3.8-flash-medium', label: 'Gemini 3.8 Flash', family: 'gemini' },
@@ -71,6 +72,7 @@ export function WelcomeHub({
   onCreateRoom,
   onJoinRoom,
 }: WelcomeHubProps) {
+  const step2Ref = useRef<HTMLElement | null>(null);
   const [step, setStep] = useState<1 | 2>(1);
   const [primaryGroup, setPrimaryGroup] =
     useState<PrimaryModeGroup>('player_vs_ai');
@@ -154,7 +156,7 @@ export function WelcomeHub({
   };
 
   const handleJoinSubmit = () => {
-    const code = joinCode.trim().toUpperCase();
+    const code = extractRoomCodeInput(joinCode);
     if (!code || starting) return;
     const cleanName = humanName.trim() || 'Player';
     onJoinRoom(code, cleanName);
@@ -175,8 +177,8 @@ export function WelcomeHub({
         : 'border-slate-700 bg-slate-900/80 text-slate-400';
 
   return (
-    <div className="min-h-screen w-screen overflow-y-auto bg-slate-950 text-slate-100">
-      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:py-8 space-y-6">
+    <div className="h-full w-full overflow-y-auto overflow-x-hidden page-scrollbar bg-slate-950 text-slate-100">
+      <div className="mx-auto max-w-6xl px-4 pt-5 pb-10 sm:px-6 lg:pt-8 lg:pb-12 space-y-5 sm:space-y-6">
         {/* Top Hero Header */}
         <header className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-white/10 bg-slate-900/75 px-6 py-4 backdrop-blur-md shadow-2xl">
           <div className="flex items-center gap-3.5">
@@ -260,7 +262,13 @@ export function WelcomeHub({
             <button
               type="button"
               data-testid="welcome-next-step"
-              onClick={() => setStep(2)}
+              onClick={() => {
+                setStep(2);
+                step2Ref.current?.scrollIntoView({
+                  behavior: 'smooth',
+                  block: 'start',
+                });
+              }}
               className="rounded-xl border border-sky-400/30 bg-sky-500/15 px-3.5 py-1.5 text-xs font-bold text-sky-300 hover:bg-sky-500/25 transition"
             >
               Continue to Step 2 →
@@ -479,51 +487,98 @@ export function WelcomeHub({
 
           {/* Multi-Human Room Create / Join Panel */}
           {isMultiHuman && (
-            <div className="mt-4 rounded-2xl border border-emerald-400/30 bg-slate-950/80 p-4 space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="mt-4 rounded-2xl border border-emerald-400/35 bg-slate-950/90 p-4 space-y-4 shadow-lg shadow-emerald-500/5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2 text-xs font-bold text-emerald-300">
                   <Users className="h-4 w-4" />
                   <span>
                     Multiplayer Room Sync ({effectiveMode.toUpperCase()})
                   </span>
                 </div>
-                <div className="flex items-center gap-2">
-                  {roomAction === 'create' ? (
-                    <>
-                      <button
-                        type="button"
-                        data-testid="mode-create-room-tab"
-                        aria-label="Create Room"
-                        onClick={() => setRoomAction('create')}
-                        className="rounded-xl border border-sky-400/50 bg-sky-500/20 px-3 py-1.5 text-xs font-bold text-sky-200 transition"
-                      >
-                        Create Room
-                      </button>
-                      <button
-                        type="button"
-                        data-testid="switch-to-join-room"
-                        aria-label="Join Room"
-                        onClick={() => setRoomAction('join')}
-                        className="rounded-xl border border-emerald-400/40 bg-emerald-500/15 px-3 py-1.5 text-xs font-bold text-emerald-200 hover:bg-emerald-500/25 transition"
-                      >
-                        Join Room
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      type="button"
-                      data-testid="switch-to-create-room"
-                      onClick={() => setRoomAction('create')}
-                      className="rounded-xl border border-white/15 bg-slate-900 px-3 py-1.5 text-xs font-bold text-slate-200 hover:bg-slate-800 transition"
-                    >
-                      Switch to Host Setup
-                    </button>
-                  )}
+                <div
+                  role="tablist"
+                  aria-label="Room Mode"
+                  className="inline-flex items-center rounded-xl border border-white/10 bg-slate-900/90 p-1 gap-1"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={roomAction === 'create'}
+                    data-testid="mode-create-room-tab"
+                    onClick={() => setRoomAction('create')}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                      roomAction === 'create'
+                        ? 'bg-sky-500/25 text-sky-200 border border-sky-400/50 shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200 border border-transparent'
+                    }`}
+                  >
+                    Host / Create Room
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={roomAction === 'join'}
+                    disabled={roomAction === 'join'}
+                    data-testid="switch-to-join-room"
+                    onClick={() => setRoomAction('join')}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-bold transition disabled:opacity-100 disabled:cursor-default ${
+                      roomAction === 'join'
+                        ? 'bg-emerald-500/25 text-emerald-200 border border-emerald-400/50 shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200 border border-transparent'
+                    }`}
+                  >
+                    Join Room
+                  </button>
                 </div>
               </div>
 
-              {roomAction === 'join' && (
-                <div className="grid gap-3 sm:grid-cols-3 items-end pt-1">
+              {roomAction === 'create' ? (
+                <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] items-end pt-1 border-t border-white/10">
+                  <div>
+                    <label
+                      htmlFor="host-player-name-input"
+                      className="mb-1 block text-[11px] font-semibold text-slate-300"
+                    >
+                      Your Host Name
+                    </label>
+                    <input
+                      id="host-player-name-input"
+                      type="text"
+                      value={humanName}
+                      onChange={(e) => setHumanName(e.target.value)}
+                      maxLength={40}
+                      placeholder="You (Player)"
+                      className="w-full rounded-xl border border-white/15 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStep(2);
+                      step2Ref.current?.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start',
+                      });
+                    }}
+                    className="rounded-xl border border-white/15 bg-slate-900 px-3.5 py-2.5 text-xs font-bold text-slate-200 hover:border-sky-400/40 hover:bg-slate-800 transition"
+                  >
+                    Customize Rules ↓
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="open-room-lobby"
+                    disabled={starting}
+                    onClick={handlePrimaryPlay}
+                    className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 to-sky-400 px-5 py-2.5 text-xs font-extrabold text-slate-950 shadow-lg shadow-emerald-500/20 hover:from-emerald-300 hover:to-sky-300 disabled:opacity-50 transition"
+                  >
+                    <Play className="h-3.5 w-3.5 fill-current" />
+                    <span>
+                      {starting ? 'Creating Room...' : 'Open Room Lobby →'}
+                    </span>
+                  </button>
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-3 items-end pt-1 border-t border-white/10">
                   <div>
                     <label
                       htmlFor="join-room-code-input"
@@ -535,12 +590,22 @@ export function WelcomeHub({
                       id="join-room-code-input"
                       type="text"
                       aria-label="Room Code"
-                      placeholder="e.g. AB12CD"
+                      placeholder="e.g. AB12CD or invite link"
                       value={joinCode}
-                      onChange={(e) =>
-                        setJoinCode(e.target.value.toUpperCase())
-                      }
-                      maxLength={12}
+                      onChange={(e) => setJoinCode(e.target.value)}
+                      onPaste={(e) => {
+                        const pasted = e.clipboardData?.getData('text');
+                        if (
+                          pasted &&
+                          (pasted.includes('://') ||
+                            pasted.includes('?room=') ||
+                            pasted.includes('/room/'))
+                        ) {
+                          e.preventDefault();
+                          setJoinCode(extractRoomCodeInput(pasted));
+                        }
+                      }}
+                      maxLength={256}
                       className="w-full rounded-xl border border-white/15 bg-slate-900 px-3 py-2 font-mono text-sm uppercase text-white focus:border-emerald-400 focus:outline-none"
                     />
                   </div>
@@ -564,11 +629,13 @@ export function WelcomeHub({
                   <button
                     type="button"
                     data-testid="join-room-submit"
-                    disabled={starting || joinCode.trim().length === 0}
+                    disabled={
+                      starting || extractRoomCodeInput(joinCode).length === 0
+                    }
                     onClick={handleJoinSubmit}
                     className="rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-extrabold text-slate-950 hover:bg-emerald-400 disabled:opacity-40 transition"
                   >
-                    {starting ? 'Joining...' : 'Join Room'}
+                    {starting ? 'Joining...' : 'Join Room →'}
                   </button>
                 </div>
               )}
@@ -578,8 +645,9 @@ export function WelcomeHub({
 
         {/* STEP 2: Gamemode & Pre-Match Setup */}
         <section
+          ref={step2Ref}
           aria-label="Step 2 Gamemode and Pre-Match Setup"
-          className="rounded-3xl border border-white/10 bg-slate-900/60 p-5 sm:p-6 shadow-xl space-y-6"
+          className="scroll-mt-4 rounded-3xl border border-white/10 bg-slate-900/60 p-5 sm:p-6 shadow-xl space-y-6"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
@@ -667,7 +735,7 @@ export function WelcomeHub({
                 <Coins className="h-5 w-5" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-extrabold text-white">
                     Confidence Betting Mode
                   </span>
@@ -847,7 +915,7 @@ export function WelcomeHub({
           {/* AI Model Lineup (only shown for modes that include AI) */}
           {allowsAi && (
             <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4 space-y-2.5">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2 text-xs font-bold text-slate-200">
                   <Bot className="h-4 w-4 text-sky-400" />
                   <span>
@@ -915,13 +983,21 @@ export function WelcomeHub({
             <button
               type="button"
               data-testid="play-button"
-              aria-label="Play"
+              aria-label={isMultiHuman ? 'Create Room & Open Lobby' : 'Play'}
               disabled={starting}
               onClick={handlePrimaryPlay}
               className="flex items-center gap-2.5 rounded-2xl bg-gradient-to-r from-emerald-400 to-sky-400 px-7 py-3 text-sm font-extrabold text-slate-950 shadow-xl shadow-emerald-500/20 hover:from-emerald-300 hover:to-sky-300 disabled:opacity-50 transition"
             >
               <Play className="h-4 w-4 fill-current" />
-              <span>{starting ? 'Starting...' : 'Play'}</span>
+              <span>
+                {starting
+                  ? isMultiHuman
+                    ? 'Creating Room...'
+                    : 'Starting...'
+                  : isMultiHuman
+                    ? 'Create Room & Open Lobby'
+                    : 'Play'}
+              </span>
             </button>
           </div>
         </section>

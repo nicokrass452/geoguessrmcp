@@ -8,7 +8,14 @@ import type {
   PanoramaProviderChoice,
   PublicGameState,
 } from '@geoguessr-mcp/shared';
-import { getSessionPlayerId, getSessionRoomCode } from './playerSession';
+import {
+  getSessionPlayerId,
+  getSessionPlayerName,
+  getSessionRoomCode,
+  getSessionToken,
+  setSessionPlayerId,
+  setSessionToken,
+} from './playerSession';
 
 export interface StartMatchPayload {
   mode: GameMode;
@@ -31,10 +38,15 @@ export interface StartMatchPayload {
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const playerId = getSessionPlayerId();
   const roomCode = getSessionRoomCode();
+  const sessionToken = getSessionToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'X-Player-Id': playerId,
+    'X-Session-Auto': '1',
   };
+  if (sessionToken) {
+    headers['X-Session-Token'] = sessionToken;
+  }
   if (roomCode) {
     headers['X-Room-Code'] = roomCode;
   }
@@ -75,6 +87,24 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  ensureSession: async (): Promise<{
+    playerId: string;
+    sessionToken: string;
+  }> => {
+    const res = await requestJson<{ playerId: string; sessionToken: string }>(
+      '/api/session',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          playerId: getSessionPlayerId(),
+          displayName: getSessionPlayerName(),
+        }),
+      }
+    );
+    if (res.playerId) setSessionPlayerId(res.playerId);
+    if (res.sessionToken) setSessionToken(res.sessionToken);
+    return res;
+  },
   getHealth: () => requestJson<HealthInfo>('/api/health'),
   getMcpStatus: () => requestJson<McpStatusInfo>('/api/mcp/status'),
   getMatch: (opts?: { roomCode?: string | null; playerId?: string }) => {
@@ -99,6 +129,7 @@ export const api = {
     requestJson<{
       roomCode: string;
       hostPlayerId: string;
+      sessionToken?: string;
       state: PublicGameState;
     }>('/api/rooms', {
       method: 'POST',
@@ -108,16 +139,23 @@ export const api = {
         autoStart: opts.autoStart ?? false,
       }),
     }),
-  joinRoom: (roomCode: string, playerName: string, playerId?: string) =>
+  joinRoom: (
+    roomCode: string,
+    playerName: string,
+    playerId?: string,
+    opts?: { preserveExistingName?: boolean }
+  ) =>
     requestJson<{
       roomCode: string;
       playerId: string;
+      sessionToken?: string;
       state: PublicGameState;
     }>(`/api/rooms/${encodeURIComponent(roomCode.trim().toUpperCase())}/join`, {
       method: 'POST',
       body: JSON.stringify({
         playerId: playerId || getSessionPlayerId(),
         playerName,
+        ...(opts?.preserveExistingName ? { preserveExistingName: true } : {}),
       }),
     }),
   startRoom: (roomCode: string, playerId?: string) =>

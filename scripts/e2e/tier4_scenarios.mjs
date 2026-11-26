@@ -377,6 +377,12 @@ async function findSessionPlayerId(tab) {
   return null;
 }
 
+async function findSessionToken(tab) {
+  const entries = await getSessionStorageEntries(tab);
+  const raw = entries.geoguessr_session_token;
+  return raw ? String(raw).replace(/^"|"$/g, '') : null;
+}
+
 async function assertPageClean(helpers, tab, label) {
   const { consoleErrors, pageErrors } = helpers.browserDriver.getErrors(tab);
   assert.deepEqual(pageErrors, [], `${label}: unexpected pageErrors: ${pageErrors.join(' | ')}`);
@@ -587,10 +593,12 @@ export function getTier4Tests(_ctx) {
         await clickByTestIdOrText(helpers, tab1, ['play-button', 'create-room'], [/Create Room|Play|Open Lobby/i]);
 
         const roomCode = await extractRoomCodeFromTab(helpers, tab1);
+        const tok1 = await findSessionToken(tab1);
         helpers.onCleanup(() =>
           helpers
             .apiFetch(`/api/rooms/${encodeURIComponent(roomCode)}/leave`, {
               baseUrl: getApiBase(helpers),
+              headers: tok1 ? { 'X-Session-Token': tok1 } : undefined,
               body: { playerId: pid1 },
             })
             .catch(() => {})
@@ -602,18 +610,20 @@ export function getTier4Tests(_ctx) {
         await setFieldByLabel(helpers, tab2, [/Room Code/i], roomCode);
         await setFieldByLabel(helpers, tab2, [/Display Name|Your Name|Player Name/i], 'PlayerTwo').catch(() => {});
         await clickByButtonText(helpers, tab2, [/^Join|Join Room/i]);
-        helpers.onCleanup(() =>
-          helpers
-            .apiFetch(`/api/rooms/${encodeURIComponent(roomCode)}/leave`, {
-              baseUrl: getApiBase(helpers),
-              body: { playerId: pid2 },
-            })
-            .catch(() => {})
-        );
 
         // Both tabs show both players in waiting lobby
         await waitForBodyText(helpers, tab1, /PlayerTwo/i, 8000);
         await waitForBodyText(helpers, tab2, /HostAlice/i, 8000);
+        const tok2 = await findSessionToken(tab2);
+        helpers.onCleanup(() =>
+          helpers
+            .apiFetch(`/api/rooms/${encodeURIComponent(roomCode)}/leave`, {
+              baseUrl: getApiBase(helpers),
+              headers: tok2 ? { 'X-Session-Token': tok2 } : undefined,
+              body: { playerId: pid2 },
+            })
+            .catch(() => {})
+        );
 
         // Host starts match
         await clickByButtonText(helpers, tab1, [/Start Match|^Start$/i]);
@@ -672,10 +682,12 @@ export function getTier4Tests(_ctx) {
         await clickByTestIdOrText(helpers, tab1, ['play-button', 'create-room'], [/Create Room|Play|Open Lobby/i]);
 
         const roomCode = await extractRoomCodeFromTab(helpers, tab1);
+        const tok1 = await findSessionToken(tab1);
         helpers.onCleanup(() =>
           helpers
             .apiFetch(`/api/rooms/${encodeURIComponent(roomCode)}/leave`, {
               baseUrl: getApiBase(helpers),
+              headers: tok1 ? { 'X-Session-Token': tok1 } : undefined,
               body: { playerId: pid1 },
             })
             .catch(() => {})
@@ -686,16 +698,18 @@ export function getTier4Tests(_ctx) {
         await setFieldByLabel(helpers, tab2, [/Room Code/i], roomCode);
         await setFieldByLabel(helpers, tab2, [/Display Name|Your Name|Player Name/i], 'PvPvAIGuest').catch(() => {});
         await clickByButtonText(helpers, tab2, [/^Join|Join Room/i]);
+
+        await waitForBodyText(helpers, tab1, /PvPvAIGuest/i, 8000);
+        const tok2 = await findSessionToken(tab2);
         helpers.onCleanup(() =>
           helpers
             .apiFetch(`/api/rooms/${encodeURIComponent(roomCode)}/leave`, {
               baseUrl: getApiBase(helpers),
+              headers: tok2 ? { 'X-Session-Token': tok2 } : undefined,
               body: { playerId: pid2 },
             })
             .catch(() => {})
         );
-
-        await waitForBodyText(helpers, tab1, /PvPvAIGuest/i, 8000);
         await clickByButtonText(helpers, tab1, [/Start Match|^Start$/i]);
         await helpers.browserDriver.waitForSelector(tab1, '.leaflet-container', 10000);
         await helpers.browserDriver.waitForSelector(tab2, '.leaflet-container', 10000);
@@ -894,6 +908,7 @@ export function getTier4Tests(_ctx) {
 
         const apiBase = getApiBase(helpers);
         const pid = await findSessionPlayerId(tab);
+        const tok = await findSessionToken(tab);
         const seenTargets = [];
 
         for (let r = 1; r <= 10; r += 1) {
@@ -909,7 +924,7 @@ export function getTier4Tests(_ctx) {
           await waitForBodyText(helpers, tab, new RegExp(`Round\\s+${r}\\s+of\\s+10\\s+Summary`, 'i'), 10000);
           const matchRes = await helpers.apiFetch(
             `/api/match${pid ? `?playerId=${encodeURIComponent(pid)}` : ''}`,
-            { baseUrl: apiBase }
+            { baseUrl: apiBase, headers: tok ? { 'X-Session-Token': tok } : undefined }
           );
           assert.ok(matchRes.ok);
           const target = matchRes.data.roundSummary?.target;
@@ -965,6 +980,7 @@ export function getTier4Tests(_ctx) {
         await helpers.browserDriver.waitForSelector(tab, '.leaflet-container', 10000);
 
         const pid = await findSessionPlayerId(tab);
+        const tok = await findSessionToken(tab);
         const cityTargets = [];
         for (let r = 1; r <= 5; r += 1) {
           await dropLeafletPin(helpers, tab, 0.5, 0.5);
@@ -972,7 +988,7 @@ export function getTier4Tests(_ctx) {
           await waitForBodyText(helpers, tab, new RegExp(`Round\\s+${r}\\s+of\\s+5\\s+Summary`, 'i'), 10000);
           const mRes = await helpers.apiFetch(
             `/api/match${pid ? `?playerId=${encodeURIComponent(pid)}` : ''}`,
-            { baseUrl: apiBase }
+            { baseUrl: apiBase, headers: tok ? { 'X-Session-Token': tok } : undefined }
           );
           assert.ok(mRes.ok);
           const target = mRes.data.roundSummary?.target;
@@ -1005,7 +1021,7 @@ export function getTier4Tests(_ctx) {
           await waitForBodyText(helpers, tab, new RegExp(`Round\\s+${r}\\s+of\\s+10\\s+Summary`, 'i'), 10000);
           const mRes = await helpers.apiFetch(
             `/api/match${pid ? `?playerId=${encodeURIComponent(pid)}` : ''}`,
-            { baseUrl: apiBase }
+            { baseUrl: apiBase, headers: tok ? { 'X-Session-Token': tok } : undefined }
           );
           assert.ok(mRes.ok);
           const target = mRes.data.roundSummary?.target;
@@ -1062,6 +1078,7 @@ export function getTier4Tests(_ctx) {
         const ai2State = await ai2.callToolJson('get_game_state');
 
         const pid = await findSessionPlayerId(tab);
+        const tok = await findSessionToken(tab);
 
         // Round 1: Human wagers 300, AI-1 explicit wager 400, AI-2 omitted wager (auto-betting)
         await dropLeafletPin(helpers, tab, 0.5, 0.5);
@@ -1091,7 +1108,7 @@ export function getTier4Tests(_ctx) {
 
         const r1Match = await helpers.apiFetch(
           `/api/match${pid ? `?playerId=${encodeURIComponent(pid)}` : ''}`,
-          { baseUrl: apiBase }
+          { baseUrl: apiBase, headers: tok ? { 'X-Session-Token': tok } : undefined }
         );
         assert.ok(r1Match.ok);
         const r1HumanRes = r1Match.data.roundSummary?.results?.find((r) => r.isHuman);
@@ -1312,9 +1329,10 @@ export function getTier4Tests(_ctx) {
         // Wait for 10s timed round to auto-expire with endedReason === 'timeout'
         await waitForBodyText(helpers, tab, /Round\s+1\s+of\s+3\s+Summary/i, 16000);
         const pid = await findSessionPlayerId(tab);
+        const tok = await findSessionToken(tab);
         const matchRes = await helpers.apiFetch(
           `/api/match${pid ? `?playerId=${encodeURIComponent(pid)}` : ''}`,
-          { baseUrl: apiBase }
+          { baseUrl: apiBase, headers: tok ? { 'X-Session-Token': tok } : undefined }
         );
         assert.ok(matchRes.ok);
         assert.equal(
@@ -1357,10 +1375,12 @@ export function getTier4Tests(_ctx) {
         await clickByTestIdOrText(helpers, tab1, ['play-button', 'create-room'], [/Create Room|Play|Open Lobby/i]);
 
         const roomCode = await extractRoomCodeFromTab(helpers, tab1);
+        const tok1 = await findSessionToken(tab1);
         helpers.onCleanup(() =>
           helpers
             .apiFetch(`/api/rooms/${encodeURIComponent(roomCode)}/leave`, {
               baseUrl: apiBase,
+              headers: tok1 ? { 'X-Session-Token': tok1 } : undefined,
               body: { playerId: pid1 },
             })
             .catch(() => {})
@@ -1371,16 +1391,18 @@ export function getTier4Tests(_ctx) {
         await setFieldByLabel(helpers, tab2, [/Room Code/i], roomCode);
         await setFieldByLabel(helpers, tab2, [/Display Name|Your Name|Player Name/i], 'ReconnectBob').catch(() => {});
         await clickByButtonText(helpers, tab2, [/^Join|Join Room/i]);
+
+        await waitForBodyText(helpers, tab1, /ReconnectBob/i, 8000);
+        const tok2 = await findSessionToken(tab2);
         helpers.onCleanup(() =>
           helpers
             .apiFetch(`/api/rooms/${encodeURIComponent(roomCode)}/leave`, {
               baseUrl: apiBase,
+              headers: tok2 ? { 'X-Session-Token': tok2 } : undefined,
               body: { playerId: pid2Before },
             })
             .catch(() => {})
         );
-
-        await waitForBodyText(helpers, tab1, /ReconnectBob/i, 8000);
         await clickByButtonText(helpers, tab1, [/Start Match|^Start$/i]);
         await helpers.browserDriver.waitForSelector(tab1, '.leaflet-container', 10000);
         await helpers.browserDriver.waitForSelector(tab2, '.leaflet-container', 10000);
@@ -1396,6 +1418,7 @@ export function getTier4Tests(_ctx) {
         // Non-host attempting host-only start/advance gets graceful error (no 500)
         const nonHostStart = await helpers.apiFetch(`/api/rooms/${encodeURIComponent(roomCode)}/start`, {
           baseUrl: apiBase,
+          headers: tok2 ? { 'X-Session-Token': tok2 } : undefined,
           body: { playerId: pid2After },
         });
         assert.ok(
@@ -1403,15 +1426,36 @@ export function getTier4Tests(_ctx) {
           `Expected non-host start rejection (400/403/409), got ${nonHostStart.status}`
         );
 
+        // Unauthenticated WS probe for token-bound player must be closed with 4003
+        const unauthProbe = await helpers.connectUiWs({ wsUrl: helpers.wsUrl, roomCode, playerId: pid1 });
+        helpers.onCleanup(() => unauthProbe.close());
+        const unauthCode = await new Promise((resolve) => {
+          if (unauthProbe.ws.readyState === 3) {
+            resolve(4003);
+            return;
+          }
+          const t = setTimeout(() => resolve(null), 3000);
+          unauthProbe.ws.once('close', (code) => {
+            clearTimeout(t);
+            resolve(code);
+          });
+        });
+        assert.equal(unauthCode, 4003, `Expected WS close code 4003 for unauthenticated probe, got ${unauthCode}`);
+
         // WS frame audit + REST + DOM + Web Storage zero-secret-leak audit
-        const wsProbe = await helpers.connectUiWs({ wsUrl: helpers.wsUrl, roomCode, playerId: pid1 });
+        const wsProbe = await helpers.connectUiWs({
+          wsUrl: helpers.wsUrl,
+          roomCode,
+          playerId: pid1,
+          sessionToken: tok1,
+        });
         helpers.onCleanup(() => wsProbe.close());
         await wsProbe.waitForMessage((m) => m.type === 'state_sync', 5000, { fromIndex: 0 });
 
         const healthRes = await helpers.apiFetch('/api/health', { baseUrl: apiBase });
         const matchRes = await helpers.apiFetch(
           `/api/match?roomCode=${encodeURIComponent(roomCode)}&playerId=${encodeURIComponent(pid1)}`,
-          { baseUrl: apiBase }
+          { baseUrl: apiBase, headers: tok1 ? { 'X-Session-Token': tok1 } : undefined }
         );
         helpers.assertNoSecretLeak(healthRes.text, 'GET /api/health');
         helpers.assertNoSecretLeak(matchRes.text, 'GET /api/match');

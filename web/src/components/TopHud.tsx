@@ -1,17 +1,23 @@
+import { useEffect, useRef, useState } from 'react';
 import {
+  Check,
   Clock,
   Coins,
   Globe2,
   Home,
+  Link2,
   Radio,
   Settings2,
   Trophy,
   User,
-  Users,
   Wifi,
   WifiOff,
 } from 'lucide-react';
 import type { PublicGameState } from '@geoguessr-mcp/shared';
+import {
+  buildRoomInviteUrl,
+  copyTextToClipboard,
+} from '../lib/playerSession';
 
 export interface TopHudProps {
   state: PublicGameState;
@@ -33,6 +39,14 @@ export function TopHud({
   onOpenSettings,
   onReturnHome,
 }: TopHudProps) {
+  const [copiedInvite, setCopiedInvite] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
   const timerUrgent =
     state.timeRemainingSec !== null && state.timeRemainingSec <= 15;
   const timerWarn =
@@ -97,14 +111,34 @@ export function TopHud({
               </span>
             )}
             {isMultiHuman && state.roomCode && (
-              <span
+              <button
+                type="button"
                 data-testid="room-code"
                 aria-label={`Room Code ${state.roomCode}`}
-                className="flex items-center gap-1 rounded-md border border-violet-400/40 bg-violet-500/20 px-1.5 py-0.5 font-mono text-[10px] font-bold text-violet-200"
+                title="Click to copy auto-join invite link"
+                onClick={() => {
+                  const link = buildRoomInviteUrl(state.roomCode || '');
+                  void copyTextToClipboard(link).then((ok) => {
+                    if (!ok) return;
+                    setCopiedInvite(true);
+                    if (copyTimerRef.current) {
+                      clearTimeout(copyTimerRef.current);
+                    }
+                    copyTimerRef.current = setTimeout(
+                      () => setCopiedInvite(false),
+                      1800
+                    );
+                  });
+                }}
+                className="flex items-center gap-1 rounded-md border border-violet-400/40 bg-violet-500/20 px-1.5 py-0.5 font-mono text-[10px] font-bold text-violet-200 hover:bg-violet-500/30 transition"
               >
-                <Users className="h-2.5 w-2.5" />
+                {copiedInvite ? (
+                  <Check className="h-2.5 w-2.5 text-emerald-300" />
+                ) : (
+                  <Link2 className="h-2.5 w-2.5" />
+                )}
                 <span>Room {state.roomCode}</span>
-              </span>
+              </button>
             )}
           </div>
           <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">

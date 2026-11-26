@@ -60,6 +60,7 @@ interface CachedEquirect {
   height: number;
   data: Uint8Array;
   jpegBytes?: Buffer;
+  isFallback?: boolean;
 }
 
 function bearingBetweenDeg(
@@ -138,6 +139,12 @@ export function matchesLocationMode(
 export class PanoramaProviderManager {
   private readonly config: ServerConfig;
   private readonly equirectCache = new Map<string, CachedEquirect>();
+  private readonly inFlightBuffers = new Map<
+    string,
+    Promise<CachedEquirect>
+  >();
+  private readonly externalFailureCooldown = new Map<string, number>();
+  private readonly externalCooldownMs = 15_000;
   private readonly maxCacheEntries = 16;
 
   constructor(config: ServerConfig) {
@@ -505,10 +512,29 @@ export class PanoramaProviderManager {
     this.equirectCache.set(key, value);
   }
 
-  private async tryFetchExternalEquirect(
+  private async refreshMapillaryThumbUrl(
+    imageId: string
+  ): Promise<string | null> {
+    if (!this.config.mapillaryAccessToken) return null;
+    try {
+      const url = `https://graph.mapillary.com/${encodeURIComponent(
+        imageId
+      )}?fields=thumb_2048_url&access_token=${encodeURIComponent(
+        this.config.mapillaryAccessToken
+      )}`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+      if (!res.ok) return null;
+      const json = (await res.json()) as { thumb_2048_url?: string };
+      return json.thumb_2048_url || null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async performExternalEquirectFetch(
     cacheKey: string,
     url: string
-  ): Promise<CachedEquirect | null> {
+  ): Promise<{ entry: CachedEquirect | null; status?: number }> {
     const safeFile = path.join(
       this.config.cacheDir,
       `${cacheKey.replace(/[^a-zA-Z0-9_-]/g, '_')}.bin`
@@ -518,38 +544,78 @@ export class PanoramaProviderManager {
       const diskBytes = await fs.readFile(safeFile);
       const decoded = decodeImageBytes(diskBytes);
       if (decoded) {
-        return { ...decoded };
+        return { entry: { ...decoded } };
       }
     } catch {
       // Cache miss on disk
     }
 
-    try {
-      const res = await fetch(url, {
-        headers: {
-          'User-Agent': 'GeoGuessr-MCP-Arena/1.0 (https://github.com/geoguessr-mcp)',
-        },
-        signal: AbortSignal.timeout(15000),
-      });
-      if (!res.ok) {
-        console.warn(`[Panorama] External image HTTP ${res.status} for ${cacheKey}`);
-        return null;
-      }
-      const arr = await res.arrayBuffer();
-      const bytes = Buffer.from(arr);
-      const decoded = decodeImageBytes(bytes);
-      if (!decoded || decoded.width < 512) return null;
+    const retryDelaysMs = [400, 900];
+    let lastError = 'unknown error';
+    let lastStatus: number | undefined;
+    for (let attempt = 0; attempt <= retryDelaysMs.length; attempt++) {
+      try {
+        const res = await fetch(url, {
+          headers: {
+            'User-Agent':
+              'GeoGuessr-MCP-Arena/1.0 (https://github.com/geoguessr-mcp)',
+          },
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!res.ok) {
+          lastStatus = res.status;
+          lastError = `HTTP ${res.status}`;
+          const retryable = res.status === 429 || res.status >= 500;
+          if (!retryable) {
+            console.warn(
+              `[Panorama] External image HTTP ${res.status} for ${cacheKey}`
+            );
+            return { entry: null, status: res.status };
+          }
+          if (attempt < retryDelaysMs.length) {
+            await new Promise((r) => setTimeout(r, retryDelaysMs[attempt]));
+            continue;
+          }
+          console.warn(
+            `[Panorama] External image HTTP ${res.status} for ${cacheKey} after ${attempt + 1} attempts`
+          );
+          return { entry: null, status: res.status };
+        }
+        const arr = await res.arrayBuffer();
+        const bytes = Buffer.from(arr);
+        const decoded = decodeImageBytes(bytes);
+        if (!decoded || decoded.width < 512) return { entry: null };
 
-      await fs.mkdir(this.config.cacheDir, { recursive: true }).catch(() => {});
-      await fs.writeFile(safeFile, bytes).catch(() => {});
-      return { ...decoded };
-    } catch (err) {
-      console.warn(
-        `[Panorama] Failed to fetch external image (${cacheKey}):`,
-        err instanceof Error ? err.message : String(err)
-      );
-      return null;
+        await fs.mkdir(this.config.cacheDir, { recursive: true }).catch(() => {});
+        const tmpFile = `${safeFile}.${process.pid}.${Date.now()}.${Math.random()
+          .toString(36)
+          .slice(2, 6)}.tmp`;
+        try {
+          await fs.writeFile(tmpFile, bytes);
+          await fs.rename(tmpFile, safeFile);
+        } catch {
+          await fs.unlink(tmpFile).catch(() => {});
+        }
+        return { entry: { ...decoded } };
+      } catch (err) {
+        const cause =
+          err instanceof Error && err.cause
+            ? ` (cause: ${
+                err.cause instanceof Error ? err.cause.message : String(err.cause)
+              })`
+            : '';
+        lastError = `${err instanceof Error ? err.message : String(err)}${cause}`;
+        if (attempt < retryDelaysMs.length) {
+          await new Promise((r) => setTimeout(r, retryDelaysMs[attempt]));
+          continue;
+        }
+      }
     }
+
+    console.warn(
+      `[Panorama] Failed to fetch external image (${cacheKey}) after ${retryDelaysMs.length + 1} attempts: ${lastError}`
+    );
+    return { entry: null, status: lastStatus };
   }
 
   public async getEquirectangularBuffer(
@@ -560,26 +626,80 @@ export class PanoramaProviderManager {
     const existing = this.equirectCache.get(cacheKey);
     if (existing) return existing;
 
-    if (node.externalEquirectUrl) {
-      const fetched = await this.tryFetchExternalEquirect(
+    const inFlight = this.inFlightBuffers.get(cacheKey);
+    if (inFlight) return inFlight;
+
+    const promise = this.resolveEquirectangularBuffer(
+      cacheKey,
+      location,
+      node
+    ).finally(() => {
+      this.inFlightBuffers.delete(cacheKey);
+    });
+    this.inFlightBuffers.set(cacheKey, promise);
+    return promise;
+  }
+
+  private async resolveEquirectangularBuffer(
+    cacheKey: string,
+    location: CatalogLocation,
+    node: InternalRoundNode
+  ): Promise<CachedEquirect> {
+    const cooldownUntil = this.externalFailureCooldown.get(cacheKey) ?? 0;
+    const inCooldown = Date.now() < cooldownUntil;
+
+    if (!inCooldown && node.externalEquirectUrl) {
+      let result = await this.performExternalEquirectFetch(
         cacheKey,
         node.externalEquirectUrl
       );
-      if (fetched) {
-        this.setCache(cacheKey, fetched);
-        return fetched;
+      const urlExpired =
+        result.status === 401 ||
+        result.status === 403 ||
+        result.status === 404 ||
+        result.status === 410;
+      if (
+        !result.entry &&
+        urlExpired &&
+        node.mapillaryImageId &&
+        this.config.mapillaryAccessToken
+      ) {
+        const refreshedUrl = await this.refreshMapillaryThumbUrl(
+          node.mapillaryImageId
+        );
+        if (refreshedUrl) {
+          node.externalEquirectUrl = refreshedUrl;
+          result = await this.performExternalEquirectFetch(
+            cacheKey,
+            refreshedUrl
+          );
+        }
+      }
+      if (result.entry) {
+        this.externalFailureCooldown.delete(cacheKey);
+        this.setCache(cacheKey, result.entry);
+        return result.entry;
       }
     }
 
-    if (node.wikimediaFile) {
+    if (!inCooldown && node.wikimediaFile) {
       const wikiUrl = `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(
         node.wikimediaFile
       )}?width=2048`;
-      const fetched = await this.tryFetchExternalEquirect(cacheKey, wikiUrl);
-      if (fetched) {
-        this.setCache(cacheKey, fetched);
-        return fetched;
+      const result = await this.performExternalEquirectFetch(cacheKey, wikiUrl);
+      if (result.entry) {
+        this.externalFailureCooldown.delete(cacheKey);
+        this.setCache(cacheKey, result.entry);
+        return result.entry;
       }
+    }
+
+    const isFallback = Boolean(node.externalEquirectUrl || node.wikimediaFile);
+    if (isFallback && !inCooldown) {
+      this.externalFailureCooldown.set(
+        cacheKey,
+        Date.now() + this.externalCooldownMs
+      );
     }
 
     const rendered = renderProceduralPanorama(location, node.nodeIndex);
@@ -587,20 +707,34 @@ export class PanoramaProviderManager {
       width: rendered.width,
       height: rendered.height,
       data: rendered.data,
+      isFallback,
     };
-    this.setCache(cacheKey, entry);
+    if (!isFallback) {
+      this.setCache(cacheKey, entry);
+    }
     return entry;
+  }
+
+  public async getEquirectangularJpegWithMeta(
+    location: CatalogLocation,
+    node: InternalRoundNode
+  ): Promise<{ jpeg: Buffer; isFallback: boolean }> {
+    const buf = await this.getEquirectangularBuffer(location, node);
+    if (!buf.jpegBytes) {
+      buf.jpegBytes = encodeEquirectangularJpeg(buf.data, buf.width, buf.height, 82);
+    }
+    return {
+      jpeg: buf.jpegBytes,
+      isFallback: Boolean(buf.isFallback),
+    };
   }
 
   public async getEquirectangularJpeg(
     location: CatalogLocation,
     node: InternalRoundNode
   ): Promise<Buffer> {
-    const buf = await this.getEquirectangularBuffer(location, node);
-    if (!buf.jpegBytes) {
-      buf.jpegBytes = encodeEquirectangularJpeg(buf.data, buf.width, buf.height, 82);
-    }
-    return buf.jpegBytes;
+    const { jpeg } = await this.getEquirectangularJpegWithMeta(location, node);
+    return jpeg;
   }
 
   public async renderAgentViewport(

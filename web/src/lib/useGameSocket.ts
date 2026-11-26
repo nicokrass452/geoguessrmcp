@@ -1,14 +1,41 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PublicGameState, WsServerMessage } from '@geoguessr-mcp/shared';
 import { api } from './api';
 import {
+  claimActiveRoomTab,
   getSessionPlayerId,
   getSessionRoomCode,
+  getSessionToken,
+  getUrlRoomCode,
+  releaseActiveRoomTab,
+  restoreRoomSessionToTab,
+  setSessionPlayerId,
   setSessionRoomCode,
+  setSessionToken as setSessionTokenStorage,
 } from './playerSession';
 
+function initTabSessionIdentity(): {
+  playerId: string;
+  sessionToken: string | null;
+} {
+  const urlCode = getUrlRoomCode();
+  if (urlCode) {
+    restoreRoomSessionToTab(urlCode);
+  }
+  return {
+    playerId: getSessionPlayerId(),
+    sessionToken: getSessionToken(),
+  };
+}
+
 export function useGameSocket() {
-  const [playerId] = useState<string>(() => getSessionPlayerId());
+  const [initialIdentity] = useState(initTabSessionIdentity);
+  const [playerId, setPlayerIdState] = useState<string>(
+    initialIdentity.playerId
+  );
+  const [sessionToken, setSessionTokenState] = useState<string | null>(
+    initialIdentity.sessionToken
+  );
   const [roomCode, setRoomCodeState] = useState<string | null>(() =>
     getSessionRoomCode()
   );
@@ -17,10 +44,44 @@ export function useGameSocket() {
   const [error, setError] = useState<string | null>(null);
   const reconnectAttempt = useRef(0);
 
-  const setRoomCode = (next: string | null) => {
+  const setPlayerId = useCallback((next: string) => {
+    const clean = next.trim();
+    if (!clean) return;
+    setSessionPlayerId(clean);
+    setPlayerIdState(clean);
+  }, []);
+
+  const setSessionToken = useCallback((next: string | null) => {
+    const clean = next?.trim() || null;
+    setSessionTokenStorage(clean);
+    setSessionTokenState(clean);
+  }, []);
+
+  const setRoomCode = useCallback((next: string | null) => {
     setSessionRoomCode(next);
     setRoomCodeState(next ? next.trim().toUpperCase() : null);
-  };
+  }, []);
+
+  useEffect(() => {
+    const clean = roomCode?.trim().toUpperCase();
+    if (!clean || clean === 'ARENA1' || clean === 'DEFAULT') {
+      releaseActiveRoomTab();
+      return;
+    }
+    claimActiveRoomTab(clean, playerId);
+    const heartbeat = setInterval(() => {
+      claimActiveRoomTab(clean, playerId);
+    }, 2000);
+    const onUnload = () => releaseActiveRoomTab();
+    window.addEventListener('pagehide', onUnload);
+    window.addEventListener('beforeunload', onUnload);
+    return () => {
+      clearInterval(heartbeat);
+      window.removeEventListener('pagehide', onUnload);
+      window.removeEventListener('beforeunload', onUnload);
+      releaseActiveRoomTab();
+    };
+  }, [roomCode, playerId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -52,6 +113,12 @@ export function useGameSocket() {
             setRoomCodeState(null);
             return;
           }
+          if (msg.includes('Valid session token required')) {
+            setSessionTokenStorage(null);
+            setSessionTokenState(null);
+            setError(msg);
+            return;
+          }
           setError(msg);
           retryTimer = setTimeout(loadInitialState, 1200);
         });
@@ -66,6 +133,10 @@ export function useGameSocket() {
         role: 'ui',
         playerId,
       });
+      const activeToken = sessionToken || getSessionToken();
+      if (activeToken) {
+        params.set('sessionToken', activeToken);
+      }
       if (roomCode) {
         params.set('roomCode', roomCode);
       }
@@ -137,9 +208,13 @@ export function useGameSocket() {
         }
       };
 
-      socket.onclose = () => {
+      socket.onclose = (evt) => {
         if (cancelled) return;
         setWsConnected(false);
+        if (evt.code === 4003) {
+          setError(evt.reason || 'Valid session token required');
+          return;
+        }
         const delay = Math.min(
           2000,
           600 * Math.pow(1.4, reconnectAttempt.current)
@@ -161,10 +236,13 @@ export function useGameSocket() {
       if (retryTimer) clearTimeout(retryTimer);
       socket?.close();
     };
-  }, [roomCode, playerId]);
+  }, [roomCode, playerId, sessionToken]);
 
   return {
     playerId,
+    setPlayerId,
+    sessionToken,
+    setSessionToken,
     roomCode,
     setRoomCode,
     state,

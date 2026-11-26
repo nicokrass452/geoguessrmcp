@@ -859,6 +859,7 @@ export async function connectUiWs(opts = {}) {
   if (opts.roomCode) url.searchParams.set('roomCode', opts.roomCode);
   if (opts.playerId) url.searchParams.set('playerId', opts.playerId);
   if (opts.playerName) url.searchParams.set('playerName', opts.playerName);
+  if (opts.sessionToken) url.searchParams.set('sessionToken', opts.sessionToken);
 
   const ws = new WebSocket(url.toString());
   const messages = [];

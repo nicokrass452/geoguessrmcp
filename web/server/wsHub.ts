@@ -39,14 +39,30 @@ export class WsHub {
 
   public attach(
     wss: WebSocketServer,
-    onUiHello?: (ws: WebSocket, meta: ConnectedUiMeta) => void
+    onUiHello?: (ws: WebSocket, meta: ConnectedUiMeta) => void,
+    verifySessionToken?: (token: string) => string | null,
+    isTokenBoundPlayer?: (roomCode: string, playerId: string) => boolean
   ): void {
     wss.on('connection', (socket: WebSocket, req: IncomingMessage) => {
       const url = new URL(req.url || '/ws', 'http://localhost');
       const role = url.searchParams.get('role') === 'agent' ? 'agent' : 'ui';
       const rawRoom = (url.searchParams.get('roomCode') || '').trim().toUpperCase();
       const roomCode = rawRoom || 'DEFAULT';
-      const playerId = (url.searchParams.get('playerId') || '').trim() || 'human';
+      const sessionToken = (url.searchParams.get('sessionToken') || '').trim();
+      const verifiedPlayerId =
+        sessionToken && verifySessionToken
+          ? verifySessionToken(sessionToken)
+          : null;
+      const rawPlayerId = (url.searchParams.get('playerId') || '').trim();
+      if (
+        role === 'ui' &&
+        !verifiedPlayerId &&
+        (Boolean(sessionToken) || isTokenBoundPlayer?.(roomCode, rawPlayerId))
+      ) {
+        socket.close(4003, 'Valid session token required');
+        return;
+      }
+      const playerId = verifiedPlayerId || rawPlayerId || 'human';
       const playerName = (url.searchParams.get('playerName') || '').trim() || undefined;
       const agentId = (url.searchParams.get('agentId') || '').trim() || undefined;
 

@@ -549,8 +549,8 @@ export function AgentHud({
       {/* Connect MCP Modal */}
       {showConnectModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-xl rounded-2xl border border-white/15 bg-slate-900 p-5 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+          <div className="flex max-h-[90dvh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-white/15 bg-slate-900 p-5 shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2">
                 <Terminal className="h-4 w-4 text-sky-400" />
                 <h2 className="text-sm font-bold text-slate-100">
@@ -566,7 +566,7 @@ export function AgentHud({
               </button>
             </div>
 
-            <div className="mt-4 space-y-3 text-xs text-slate-300">
+            <div className="mt-4 flex-1 overflow-y-auto custom-scrollbar pr-1 space-y-3 text-xs text-slate-300">
               <p>
                 Add this server to <strong>Antigravity</strong> (
                 <code className="text-sky-300">~/.gemini/config/mcp_config.json</code>),

@@ -41,7 +41,7 @@ export function SpectatorStage({
     <section
       data-testid="spectator-stage"
       aria-label="AI-Only Spectator Stage"
-      className="flex h-screen w-screen flex-col bg-slate-950 pt-20 pb-6 px-4 sm:px-6 overflow-y-auto"
+      className="flex h-full w-full flex-col bg-slate-950 pt-24 sm:pt-20 pb-8 px-4 sm:px-6 overflow-y-auto overflow-x-hidden page-scrollbar"
     >
       <div className="mx-auto w-full max-w-6xl space-y-5">
         {/* Spectator Header Banner */}

@@ -72,6 +72,7 @@ interface MutablePlayerState {
   name: string;
   isHuman: boolean;
   isHost?: boolean;
+  tokenBound?: boolean;
   model?: string;
   transport?: string;
   color: string;
@@ -101,6 +102,8 @@ interface MutablePlayerState {
 interface RoomRuntime {
   roomCode: string;
   matchId: string;
+  creatorPlayerId: string | null;
+  creatorTokenBound: boolean;
   hostPlayerId: string | null;
   matchStatus: MatchStatus;
   mode: GameMode;
@@ -136,6 +139,7 @@ export interface EngineLifecycleHooks {
 export interface MatchSetupOptions {
   roomCode?: string;
   playerId?: string;
+  tokenVerified?: boolean;
   humanName?: string;
   mode?: GameMode;
   locationMode?: LocationMode;
@@ -455,7 +459,8 @@ export class GameEngine {
     room: RoomRuntime,
     playerId: string,
     playerName: string,
-    isHost: boolean
+    isHost: boolean,
+    tokenBound = false
   ): MutablePlayerState {
     const spawnOpaqueId = room.currentRound?.spawnOpaqueId || 'node_0';
     const spawnNode = room.currentRound
@@ -471,6 +476,7 @@ export class GameEngine {
       name: playerName.trim() || 'You (Player)',
       isHuman: true,
       isHost,
+      tokenBound,
       color,
       status: 'exploring',
       connected: true,
@@ -492,6 +498,29 @@ export class GameEngine {
     };
   }
 
+  private peekHumanInRoom(
+    room: RoomRuntime,
+    playerId?: string
+  ): MutablePlayerState | null {
+    const cleanId = playerId?.trim() || room.hostPlayerId || 'human';
+    const existing = room.humans.get(cleanId);
+    if (existing) return existing;
+
+    if (room.mode === 'pvp' || room.mode === 'pvp_ai') {
+      return null;
+    }
+
+    if (
+      room.humans.size === 1 &&
+      room.humans.has('human') &&
+      cleanId !== 'human'
+    ) {
+      return room.humans.get('human')!;
+    }
+
+    return Array.from(room.humans.values())[0] ?? null;
+  }
+
   private ensureHumanInRoom(
     room: RoomRuntime,
     playerId?: string,
@@ -505,6 +534,10 @@ export class GameEngine {
       }
       existing.connected = true;
       return existing;
+    }
+
+    if ((room.mode === 'pvp' || room.mode === 'pvp_ai') && room.humans.size > 0) {
+      throw new Error('Player is not in this room. Join the room first.');
     }
 
     // If single-human room created with default 'human' and a tab-scoped playerId arrives, re-key host
@@ -545,6 +578,104 @@ export class GameEngine {
 
   // ==================== Room & Match Lifecycle ====================
 
+  public isRegisteredPlayerId(playerId: string | undefined): boolean {
+    const clean = playerId?.trim();
+    if (!clean) return false;
+    for (const room of this.rooms.values()) {
+      if (
+        room.creatorPlayerId === clean ||
+        room.hostPlayerId === clean ||
+        room.humans.has(clean)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  public isTokenBoundPlayer(
+    roomCode: string | undefined,
+    playerId: string | undefined
+  ): boolean {
+    const clean = playerId?.trim();
+    const cleanRoom = roomCode?.trim().toUpperCase();
+    if (!clean) {
+      if (cleanRoom && cleanRoom !== 'DEFAULT' && cleanRoom !== 'ARENA1') {
+        const room = this.rooms.get(cleanRoom);
+        if (!room) return false;
+        const hostHuman = room.hostPlayerId
+          ? room.humans.get(room.hostPlayerId)
+          : undefined;
+        return room.creatorTokenBound || Boolean(hostHuman?.tokenBound);
+      }
+      return false;
+    }
+    if (cleanRoom && cleanRoom !== 'DEFAULT') {
+      const room = this.rooms.get(cleanRoom);
+      if (!room) return false;
+      return (
+        (room.creatorTokenBound && room.creatorPlayerId === clean) ||
+        Boolean(room.humans.get(clean)?.tokenBound)
+      );
+    }
+    for (const room of this.rooms.values()) {
+      if (
+        (room.creatorTokenBound && room.creatorPlayerId === clean) ||
+        room.humans.get(clean)?.tokenBound
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private isHumanTokenProtected(
+    room: RoomRuntime,
+    player: MutablePlayerState
+  ): boolean {
+    return (
+      Boolean(player.tokenBound) ||
+      (room.creatorTokenBound && room.creatorPlayerId === player.id)
+    );
+  }
+
+  private assertPlayerAuthorized(
+    room: RoomRuntime,
+    callerId: string | undefined,
+    tokenVerified: boolean | undefined,
+    actionLabel: string
+  ): void {
+    const clean = callerId?.trim();
+    if (!clean) return;
+    const requiresToken =
+      (room.creatorTokenBound && room.creatorPlayerId === clean) ||
+      Boolean(room.humans.get(clean)?.tokenBound);
+    if (requiresToken && !tokenVerified) {
+      throw new Error(`Valid session token required to ${actionLabel}.`);
+    }
+  }
+
+  private assertHostAuthorized(
+    room: RoomRuntime,
+    callerId: string | undefined,
+    tokenVerified: boolean | undefined,
+    actionLabel: string
+  ): void {
+    if (!room.hostPlayerId) return;
+    const hostHuman = room.humans.get(room.hostPlayerId);
+    const requireToken =
+      room.creatorTokenBound || Boolean(hostHuman?.tokenBound);
+    if (requireToken) {
+      if (!tokenVerified || !callerId || callerId !== room.hostPlayerId) {
+        throw new Error(`Only the room host can ${actionLabel}.`);
+      }
+      return;
+    }
+    if (callerId && callerId !== room.hostPlayerId) {
+      throw new Error(`Only the room host can ${actionLabel}.`);
+    }
+  }
+
   public async createRoom(opts: MatchSetupOptions): Promise<{
     roomCode: string;
     hostPlayerId: string;
@@ -576,17 +707,34 @@ export class GameEngine {
 
   public joinRoom(
     roomCode: string,
-    opts: { playerId?: string; playerName: string }
+    opts: {
+      playerId?: string;
+      playerName?: string;
+      tokenVerified?: boolean;
+      preserveExistingName?: boolean;
+    }
   ): { roomCode: string; playerId: string; state: PublicGameState } {
     const room = this.resolveRoom(roomCode);
     const playerId =
       opts.playerId?.trim() ||
       `player_${crypto.randomBytes(3).toString('hex')}`;
-    const playerName = opts.playerName.trim() || 'Player';
+    const playerName = opts.playerName?.trim() || 'Player';
+
+    this.assertPlayerAuthorized(
+      room,
+      playerId,
+      opts.tokenVerified,
+      'rejoin as this player'
+    );
 
     const existing = room.humans.get(playerId);
     if (existing) {
-      existing.name = playerName;
+      if (opts.tokenVerified) {
+        existing.tokenBound = true;
+      }
+      if (!opts.preserveExistingName && opts.playerName?.trim()) {
+        existing.name = playerName;
+      }
       existing.connected = true;
       existing.status = existing.hasGuessed ? 'guessed' : 'exploring';
     } else {
@@ -594,7 +742,8 @@ export class GameEngine {
         room,
         playerId,
         playerName,
-        room.humans.size === 0
+        room.humans.size === 0,
+        Boolean(opts.tokenVerified)
       );
       if (!room.hostPlayerId) {
         room.hostPlayerId = playerId;
@@ -611,6 +760,17 @@ export class GameEngine {
       );
     }
 
+    if (
+      room.creatorPlayerId &&
+      playerId === room.creatorPlayerId &&
+      (!room.creatorTokenBound || opts.tokenVerified)
+    ) {
+      room.hostPlayerId = playerId;
+      for (const h of room.humans.values()) {
+        h.isHost = h.id === playerId;
+      }
+    }
+
     room.lastActivityAt = Date.now();
     this.broadcastRoomStateSync(room);
     return {
@@ -622,17 +782,16 @@ export class GameEngine {
 
   public async startRoom(
     roomCode: string,
-    opts?: { playerId?: string }
+    opts?: { playerId?: string; tokenVerified?: boolean }
   ): Promise<{ roomCode: string; state: PublicGameState }> {
     const room = this.resolveRoom(roomCode);
     const callerId = opts?.playerId?.trim();
-    if (
-      callerId &&
-      room.hostPlayerId &&
-      callerId !== room.hostPlayerId
-    ) {
-      throw new Error('Only the room host can start the match.');
-    }
+    this.assertHostAuthorized(
+      room,
+      callerId,
+      opts?.tokenVerified,
+      'start the match'
+    );
 
     room.lastActivityAt = Date.now();
     this.activeRoomCode = room.roomCode;
@@ -658,7 +817,7 @@ export class GameEngine {
 
   public leaveRoom(
     roomCode: string,
-    opts?: { playerId?: string }
+    opts?: { playerId?: string; tokenVerified?: boolean }
   ): { ok: true; roomCode: string } {
     const code = roomCode?.trim().toUpperCase();
     const room =
@@ -670,6 +829,14 @@ export class GameEngine {
     }
 
     const pid = opts?.playerId?.trim();
+    if (pid) {
+      this.assertPlayerAuthorized(
+        room,
+        pid,
+        opts?.tokenVerified,
+        'leave the room as this player'
+      );
+    }
     if (pid && room.humans.has(pid)) {
       const h = room.humans.get(pid)!;
       if (room.matchStatus === 'lobby') {
@@ -679,6 +846,7 @@ export class GameEngine {
         h.status = 'disconnected';
       }
       if (room.hostPlayerId === pid) {
+        h.isHost = false;
         const nextHost = Array.from(room.humans.values()).find((p) => p.connected);
         room.hostPlayerId = nextHost?.id ?? null;
         if (nextHost) nextHost.isHost = true;
@@ -705,10 +873,25 @@ export class GameEngine {
     const code =
       requestedCode && requestedCode !== 'DEFAULT'
         ? requestedCode
-        : this.activeRoomCode || 'ARENA1';
+        : 'ARENA1';
 
     const existing = this.rooms.get(code);
     if (existing) {
+      const anyConnectedHuman = Array.from(existing.humans.values()).some(
+        (h) => h.connected
+      );
+      if (
+        (existing.mode === 'pvp' || existing.mode === 'pvp_ai') &&
+        existing.hostPlayerId &&
+        anyConnectedHuman
+      ) {
+        this.assertHostAuthorized(
+          existing,
+          opts.playerId?.trim(),
+          opts.tokenVerified,
+          'restart the match'
+        );
+      }
       this.stopRoomTimer(existing);
       for (const agId of existing.agents.keys()) {
         this.agentToRoom.delete(agId);
@@ -743,6 +926,8 @@ export class GameEngine {
     const room: RoomRuntime = {
       roomCode: code,
       matchId: `match_${crypto.randomBytes(4).toString('hex')}`,
+      creatorPlayerId: hostId,
+      creatorTokenBound: Boolean(opts.tokenVerified),
       hostPlayerId: hostId,
       matchStatus: autoStart ? 'active' : 'lobby',
       mode,
@@ -771,7 +956,13 @@ export class GameEngine {
     this.rooms.set(code, room);
     this.activeRoomCode = code;
 
-    const hostHuman = this.createHumanState(room, hostId, hostName, true);
+    const hostHuman = this.createHumanState(
+      room,
+      hostId,
+      hostName,
+      true,
+      Boolean(opts.tokenVerified)
+    );
     room.humans.set(hostId, hostHuman);
 
     await this.setupRound(room, 1);
@@ -1089,18 +1280,44 @@ export class GameEngine {
     requestingPlayerId?: string
   ): PublicGameState {
     const room = this.resolveRoom(roomCode, requestingPlayerId);
-    const primaryHuman =
-      (requestingPlayerId && room.humans.get(requestingPlayerId)) ||
+    const cleanReqId = requestingPlayerId?.trim();
+    const matched = cleanReqId ? room.humans.get(cleanReqId) : undefined;
+    const fallbackCandidate =
       (room.hostPlayerId && room.humans.get(room.hostPlayerId)) ||
-      Array.from(room.humans.values())[0] ||
-      this.createHumanState(room, requestingPlayerId || 'human', 'Spectator', true);
+      Array.from(room.humans.values())[0];
+
+    let primaryHuman: MutablePlayerState;
+    if (matched) {
+      primaryHuman = matched;
+    } else if (
+      fallbackCandidate &&
+      !this.isHumanTokenProtected(room, fallbackCandidate)
+    ) {
+      primaryHuman = fallbackCandidate;
+    } else {
+      primaryHuman = this.createHumanState(
+        room,
+        cleanReqId || 'guest',
+        room.mode === 'spectator' ? 'Spectator' : 'Guest',
+        false
+      );
+      // Do not mutate room.humanColorCursor for synthetic read-only views
+      room.humanColorCursor = Math.max(0, room.humanColorCursor - 1);
+    }
 
     const humansViews =
       room.mode === 'spectator'
         ? []
-        : Array.from(room.humans.values()).map((h) =>
-            this.toHumanPlayerView(room, h)
-          );
+        : Array.from(room.humans.values()).map((h) => {
+            const view = this.toHumanPlayerView(room, h);
+            if (
+              room.currentRound.status === 'active' &&
+              h.id !== primaryHuman.id
+            ) {
+              return { ...view, myGuess: null };
+            }
+            return view;
+          });
 
     return {
       matchId: room.matchId,
@@ -1849,9 +2066,30 @@ export class GameEngine {
     heading: number,
     pitch: number,
     zoom: number,
-    opts?: { roomCode?: string; playerId?: string }
+    opts?: { roomCode?: string; playerId?: string; tokenVerified?: boolean }
   ): PublicGameState {
     const room = this.resolveRoom(opts?.roomCode, opts?.playerId);
+    this.assertPlayerAuthorized(
+      room,
+      opts?.playerId,
+      opts?.tokenVerified,
+      'update camera'
+    );
+    const target = this.peekHumanInRoom(room, opts?.playerId);
+    if (target) {
+      this.assertPlayerAuthorized(
+        room,
+        target.id,
+        opts?.tokenVerified,
+        'update camera'
+      );
+    } else if (
+      (room.mode === 'pvp' || room.mode === 'pvp_ai') &&
+      this.isTokenBoundPlayer(room.roomCode, opts?.playerId) &&
+      !opts?.tokenVerified
+    ) {
+      throw new Error('Valid session token required to update camera.');
+    }
     const human = this.ensureHumanInRoom(room, opts?.playerId);
     human.camera = clampCamera(heading, pitch, zoom);
     return this.getPublicState(room.roomCode, human.id);
@@ -1862,8 +2100,30 @@ export class GameEngine {
     nodeId?: string;
     roomCode?: string;
     playerId?: string;
+    tokenVerified?: boolean;
   }): PublicGameState {
     const room = this.resolveRoom(opts.roomCode, opts.playerId);
+    this.assertPlayerAuthorized(
+      room,
+      opts.playerId,
+      opts.tokenVerified,
+      'move player'
+    );
+    const target = this.peekHumanInRoom(room, opts.playerId);
+    if (target) {
+      this.assertPlayerAuthorized(
+        room,
+        target.id,
+        opts.tokenVerified,
+        'move player'
+      );
+    } else if (
+      (room.mode === 'pvp' || room.mode === 'pvp_ai') &&
+      this.isTokenBoundPlayer(room.roomCode, opts.playerId) &&
+      !opts.tokenVerified
+    ) {
+      throw new Error('Valid session token required to move player.');
+    }
     const human = this.ensureHumanInRoom(room, opts.playerId);
     const currentNode = this.getInternalNode(room, human.currentOpaqueNodeId);
     let targetOpaqueId: string | null = null;
@@ -1906,8 +2166,30 @@ export class GameEngine {
   public returnHumanToStart(opts?: {
     roomCode?: string;
     playerId?: string;
+    tokenVerified?: boolean;
   }): PublicGameState {
     const room = this.resolveRoom(opts?.roomCode, opts?.playerId);
+    this.assertPlayerAuthorized(
+      room,
+      opts?.playerId,
+      opts?.tokenVerified,
+      'return to start'
+    );
+    const target = this.peekHumanInRoom(room, opts?.playerId);
+    if (target) {
+      this.assertPlayerAuthorized(
+        room,
+        target.id,
+        opts?.tokenVerified,
+        'return to start'
+      );
+    } else if (
+      (room.mode === 'pvp' || room.mode === 'pvp_ai') &&
+      this.isTokenBoundPlayer(room.roomCode, opts?.playerId) &&
+      !opts?.tokenVerified
+    ) {
+      throw new Error('Valid session token required to return to start.');
+    }
     const human = this.ensureHumanInRoom(room, opts?.playerId);
     const spawnNode = this.getInternalNode(room, room.currentRound.spawnOpaqueId);
     human.currentOpaqueNodeId = room.currentRound.spawnOpaqueId;
@@ -1919,7 +2201,12 @@ export class GameEngine {
   public submitHumanGuess(
     latitude: number,
     longitude: number,
-    opts?: { roomCode?: string; playerId?: string; wager?: number }
+    opts?: {
+      roomCode?: string;
+      playerId?: string;
+      tokenVerified?: boolean;
+      wager?: number;
+    }
   ): PublicGameState {
     const room = this.resolveRoom(opts?.roomCode, opts?.playerId);
     room.lastActivityAt = Date.now();
@@ -1932,6 +2219,27 @@ export class GameEngine {
       throw new Error('Current round is already over.');
     }
 
+    this.assertPlayerAuthorized(
+      room,
+      opts?.playerId,
+      opts?.tokenVerified,
+      'submit a guess'
+    );
+    const target = this.peekHumanInRoom(room, opts?.playerId);
+    if (target) {
+      this.assertPlayerAuthorized(
+        room,
+        target.id,
+        opts?.tokenVerified,
+        'submit a guess'
+      );
+    } else if (
+      (room.mode === 'pvp' || room.mode === 'pvp_ai') &&
+      this.isTokenBoundPlayer(room.roomCode, opts?.playerId) &&
+      !opts?.tokenVerified
+    ) {
+      throw new Error('Valid session token required to submit a guess.');
+    }
     const human = this.ensureHumanInRoom(room, opts?.playerId);
     if (human.hasGuessed) {
       throw new Error('You already submitted a guess this round.');
@@ -1986,10 +2294,10 @@ export class GameEngine {
     return this.getPublicState(room.roomCode, human.id);
   }
 
-  public async getRoundNodeEquirectangularJpeg(
+  public async getRoundNodeEquirectangularJpegWithMeta(
     roundId: string,
     opaqueNodeId: string
-  ): Promise<Buffer> {
+  ): Promise<{ jpeg: Buffer; isFallback: boolean }> {
     let targetRoom: RoomRuntime | undefined;
     for (const r of this.rooms.values()) {
       if (r.currentRound?.roundId === roundId) {
@@ -2004,10 +2312,21 @@ export class GameEngine {
       throw new Error(`Unknown panorama node: ${opaqueNodeId}`);
     }
     const node = this.getInternalNode(targetRoom, opaqueNodeId);
-    return this.panoramas.getEquirectangularJpeg(
+    return this.panoramas.getEquirectangularJpegWithMeta(
       targetRoom.currentRound.scene.location,
       node
     );
+  }
+
+  public async getRoundNodeEquirectangularJpeg(
+    roundId: string,
+    opaqueNodeId: string
+  ): Promise<Buffer> {
+    const { jpeg } = await this.getRoundNodeEquirectangularJpegWithMeta(
+      roundId,
+      opaqueNodeId
+    );
+    return jpeg;
   }
 
   // ==================== Round Lifecycle & Betting Settlement ====================
@@ -2061,7 +2380,8 @@ export class GameEngine {
   public endCurrentRound(
     reason: 'all_guessed' | 'timeout' | 'manual' = 'manual',
     roomCode?: string,
-    playerId?: string
+    playerId?: string,
+    tokenVerified?: boolean
   ): PublicGameState {
     const room = this.resolveRoom(roomCode, playerId);
     if (
@@ -2069,9 +2389,12 @@ export class GameEngine {
       (room.mode === 'pvp' || room.mode === 'pvp_ai')
     ) {
       const callerId = playerId?.trim();
-      if (callerId && room.hostPlayerId && callerId !== room.hostPlayerId) {
-        throw new Error('Only the room host can end the round early.');
-      }
+      this.assertHostAuthorized(
+        room,
+        callerId,
+        tokenVerified,
+        'end the round early'
+      );
     }
     if (room.currentRound.status === 'round_over') {
       return this.getPublicState(room.roomCode, playerId);
@@ -2209,13 +2532,17 @@ export class GameEngine {
   public async advanceToNextRound(opts?: {
     roomCode?: string;
     playerId?: string;
+    tokenVerified?: boolean;
   }): Promise<PublicGameState> {
     const room = this.resolveRoom(opts?.roomCode, opts?.playerId);
     if (room.mode === 'pvp' || room.mode === 'pvp_ai') {
       const callerId = opts?.playerId?.trim();
-      if (callerId && room.hostPlayerId && callerId !== room.hostPlayerId) {
-        throw new Error('Only the room host can advance to the next round.');
-      }
+      this.assertHostAuthorized(
+        room,
+        callerId,
+        opts?.tokenVerified,
+        'advance to the next round'
+      );
     }
     room.lastActivityAt = Date.now();
     if (room.matchStatus === 'finished') {
@@ -2223,7 +2550,12 @@ export class GameEngine {
     }
 
     if (room.currentRound.status !== 'round_over') {
-      this.endCurrentRound('manual', room.roomCode, opts?.playerId);
+      this.endCurrentRound(
+        'manual',
+        room.roomCode,
+        opts?.playerId,
+        opts?.tokenVerified
+      );
     }
 
     if (room.currentRoundNumber >= room.totalRounds) {
