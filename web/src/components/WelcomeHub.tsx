@@ -14,23 +14,29 @@ import {
   X,
 } from 'lucide-react';
 import type {
+  AgyModelOption,
   AgyRunnerStatus,
+  CliProviderId,
   GameMode,
   HealthInfo,
   LocationMode,
   McpStatusInfo,
+  ModelEffortLevel,
   PanoramaProviderChoice,
 } from '@geoguessr-mcp/shared';
 import type { StartMatchPayload } from '../lib/api';
 import { extractRoomCodeInput } from '../lib/playerSession';
 import {
+  EFFORT_LABELS,
   FALLBACK_AGY_MODELS,
   formatDurationLabel,
   formatOrdinalRank,
+  getEffectiveEffort,
   getLastGameSummary,
   getModelUiMeta,
   getPlayerInitials,
   LOCATION_META,
+  PROVIDER_META,
   type LastGameSummary,
 } from '../lib/uiHelpers';
 import { SettingsModal } from './SettingsModal';
@@ -43,6 +49,7 @@ export interface WelcomeHubProps {
   health: HealthInfo | null;
   mcpStatus?: McpStatusInfo;
   agyRunner?: AgyRunnerStatus;
+  onRefreshModels?: () => Promise<void> | void;
   starting: boolean;
   error: string | null;
   onClearError: () => void;
@@ -57,6 +64,7 @@ export function WelcomeHub({
   health,
   mcpStatus,
   agyRunner,
+  onRefreshModels,
   starting,
   error,
   onClearError,
@@ -91,7 +99,16 @@ export function WelcomeHub({
   const [selectedModels, setSelectedModels] = useState<string[]>(
     agyRunner?.selectedModels && agyRunner.selectedModels.length > 0
       ? agyRunner.selectedModels
-      : ['gemini-4-hydrogen-medium', 'claude-sonnet-5-5-medium']
+      : ['agy:gemini-4-hydrogen', 'agy:claude-sonnet-5-5']
+  );
+  const [defaultEffort, setDefaultEffort] = useState<ModelEffortLevel>(
+    agyRunner?.defaultEffort ?? 'medium'
+  );
+  const [modelEfforts, setModelEfforts] = useState<
+    Record<string, ModelEffortLevel>
+  >(agyRunner?.modelEfforts ?? {});
+  const [providerFilter, setProviderFilter] = useState<'all' | CliProviderId>(
+    'all'
   );
 
   const [showAllModels, setShowAllModels] = useState(false);
@@ -105,10 +122,54 @@ export function WelcomeHub({
     setLastGame(getLastGameSummary());
   }, []);
 
+  useEffect(() => {
+    if (!agyRunner) return;
+    if (agyRunner.selectedModels.length > 0) {
+      setSelectedModels((prev) => {
+        const availableIds = new Set(agyRunner.availableModels.map((m) => m.id));
+        const validPrev = prev.filter((id) => availableIds.has(id));
+        return validPrev.length > 0 ? validPrev : agyRunner.selectedModels;
+      });
+    }
+  }, [agyRunner]);
+
   const availableModels =
     agyRunner?.availableModels && agyRunner.availableModels.length > 0
       ? agyRunner.availableModels
       : FALLBACK_AGY_MODELS;
+
+  const filteredModels =
+    providerFilter === 'all'
+      ? availableModels
+      : availableModels.filter((m) => m.provider === providerFilter);
+
+  const providerTabs: Array<{ id: 'all' | CliProviderId; label: string; count: number }> = [
+    { id: 'all', label: 'All', count: availableModels.length },
+    ...(['agy', 'codex', 'claude'] as const)
+      .map((pid) => ({
+        id: pid as 'all' | CliProviderId,
+        label: PROVIDER_META[pid].shortLabel,
+        count: availableModels.filter((m) => m.provider === pid).length,
+      }))
+      .filter((t) => t.count > 0),
+  ];
+
+  const availableEffortLevels: ModelEffortLevel[] = (
+    ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] as const
+  ).filter((lvl) =>
+    filteredModels.some((m) => m.supportedEfforts?.includes(lvl))
+  );
+
+  const cycleModelEffort = (model: AgyModelOption) => {
+    const supported =
+      model.supportedEfforts && model.supportedEfforts.length > 0
+        ? model.supportedEfforts
+        : [model.defaultEffort || 'medium'];
+    const current = getEffectiveEffort(model, defaultEffort, modelEfforts);
+    const idx = supported.indexOf(current);
+    const next = supported[(idx + 1) % supported.length];
+    setModelEfforts((prev) => ({ ...prev, [model.id]: next }));
+  };
 
   const effectiveMode: GameMode =
     flowMode === 'player_vs_ai'
@@ -170,6 +231,8 @@ export function WelcomeHub({
       maxStepsPerRound,
       timeoutSec,
       selectedModels: finalModels,
+      defaultEffort,
+      modelEfforts,
       autoPlayEnabled: modeAllowsAi && finalModels.length > 0,
     };
   };
@@ -226,14 +289,14 @@ export function WelcomeHub({
       : activeSelectedModels
           .map((id) => {
             const found = availableModels.find((m) => m.id === id);
-            return getModelUiMeta(id, found?.family, found?.label).shortName;
+            return getModelUiMeta(id, found?.family, found?.label, found).shortName;
           })
           .join(', ');
 
   const visibleModels = showAllModels
-    ? availableModels
-    : availableModels.slice(0, 4);
-  const hiddenModelCount = Math.max(0, availableModels.length - 4);
+    ? filteredModels
+    : filteredModels.slice(0, 8);
+  const hiddenModelCount = Math.max(0, filteredModels.length - 8);
 
   const setupTitle =
     flowMode === 'player_vs_ai'
@@ -666,21 +729,94 @@ export function WelcomeHub({
 
                   {allowsAi ? (
                     <>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {/* Provider Filter Pills + Reasoning Effort Control */}
+                      <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2.5">
+                        {providerTabs.length > 1 && (
+                          <div className="inline-flex flex-wrap rounded-xl border border-white/10 bg-[#0b1020] p-1 gap-1">
+                            {providerTabs.map((pt) => (
+                              <button
+                                key={pt.id}
+                                type="button"
+                                onClick={() => setProviderFilter(pt.id)}
+                                className={`rounded-[9px] px-2.5 py-1 text-[12px] font-semibold transition ${
+                                  providerFilter === pt.id
+                                    ? 'bg-[#18223a] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.14)]'
+                                    : 'text-[#8d97ae] hover:text-white'
+                                }`}
+                              >
+                                {pt.label}{' '}
+                                <span className="opacity-65">({pt.count})</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {availableEffortLevels.length > 0 && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[12px] font-semibold text-[#8d97ae]">
+                              Effort
+                            </span>
+                            <div className="inline-flex rounded-xl border border-white/10 bg-[#0b1020] p-1 gap-0.5">
+                              {availableEffortLevels.map((lvl) => (
+                                <button
+                                  key={lvl}
+                                  type="button"
+                                  data-testid={`effort-${lvl}`}
+                                  onClick={() => {
+                                    setDefaultEffort(lvl);
+                                    setModelEfforts({});
+                                  }}
+                                  className={`rounded-[8px] px-2.5 py-1 text-[12px] font-semibold transition ${
+                                    defaultEffort === lvl
+                                      ? 'bg-[#22c55e]/20 text-[#22c55e] shadow-[inset_0_0_0_1px_rgba(34,197,94,0.35)]'
+                                      : 'text-[#8d97ae] hover:text-white'
+                                  }`}
+                                >
+                                  {EFFORT_LABELS[lvl]}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                         {visibleModels.map((m) => {
-                          const meta = getModelUiMeta(m.id, m.family, m.label);
+                          const meta = getModelUiMeta(
+                            m.id,
+                            m.family,
+                            m.label,
+                            m
+                          );
                           const isOn = activeSelectedModels.includes(m.id);
+                          const eff = getEffectiveEffort(
+                            m,
+                            defaultEffort,
+                            modelEfforts
+                          );
+                          const hasCustomEffort = Boolean(modelEfforts[m.id]);
+                          const canCycle = (m.supportedEfforts?.length ?? 0) > 1;
                           return (
-                            <button
+                            <div
                               key={m.id}
-                              type="button"
+                              role="button"
+                              tabIndex={0}
                               onClick={() => toggleModel(m.id)}
-                              className={`relative flex flex-col items-center gap-2 rounded-[14px] border p-3.5 text-center transition ${
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  toggleModel(m.id);
+                                }
+                              }}
+                              className={`relative cursor-pointer flex flex-col items-center gap-2 rounded-[14px] border p-3.5 pt-6 text-center transition ${
                                 isOn
                                   ? 'border-[#22c55e] bg-[#22c55e]/[0.08]'
                                   : 'border-white/15 bg-transparent hover:border-white/30'
                               }`}
                             >
+                              <span className="absolute top-2 left-2.5 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#cbd5e1]">
+                                {meta.providerShort}
+                              </span>
                               {isOn && (
                                 <span className="absolute top-2 right-2.5 grid h-5 w-5 place-items-center rounded-full bg-[#22c55e] text-[12px] font-black text-[#052e14]">
                                   ✓
@@ -688,17 +824,39 @@ export function WelcomeHub({
                               )}
                               <div
                                 style={{ backgroundColor: meta.color }}
-                                className="grid h-12 w-12 place-items-center rounded-full text-[18px] font-extrabold text-[#0b1020]"
+                                className="grid h-12 w-12 place-items-center rounded-full text-[15px] font-extrabold text-[#0b1020]"
                               >
                                 {meta.badge}
                               </div>
-                              <b className="text-[14px] font-bold text-white leading-tight">
+                              <b className="text-[13px] font-bold text-white leading-tight line-clamp-2">
                                 {meta.shortName}
                               </b>
-                              <small className="text-[12px] text-[#8d97ae]">
-                                {meta.tierLabel}
-                              </small>
-                            </button>
+                              <button
+                                type="button"
+                                disabled={!canCycle}
+                                title={
+                                  canCycle
+                                    ? `Click to cycle effort (${m.supportedEfforts.join(', ')})`
+                                    : `Fixed effort: ${EFFORT_LABELS[eff]}`
+                                }
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (canCycle) cycleModelEffort(m);
+                                }}
+                                className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold transition ${
+                                  hasCustomEffort
+                                    ? 'border-[#22c55e]/50 bg-[#22c55e]/15 text-[#22c55e]'
+                                    : 'border-white/10 bg-white/[0.04] text-[#8d97ae]'
+                                } ${
+                                  canCycle
+                                    ? 'hover:border-white/30 hover:text-white'
+                                    : 'cursor-default opacity-80'
+                                }`}
+                              >
+                                {EFFORT_LABELS[eff]}
+                                {canCycle ? ' ↻' : ''}
+                              </button>
+                            </div>
                           );
                         })}
                       </div>
@@ -943,6 +1101,15 @@ export function WelcomeHub({
                     {formatDurationLabel(roundDurationSec)}
                   </span>
                 </div>
+                {allowsAi && (
+                  <div className="flex justify-between gap-3 py-2.5">
+                    <span className="text-[#8d97ae]">Effort</span>
+                    <span className="text-right font-semibold text-white">
+                      {EFFORT_LABELS[defaultEffort]}
+                      {Object.keys(modelEfforts).length > 0 ? ' (custom)' : ''}
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center gap-3.5 pt-4 pb-1">
@@ -1020,6 +1187,7 @@ export function WelcomeHub({
           health={health}
           mcpStatus={mcpStatus}
           agyRunner={agyRunner}
+          onRefreshModels={onRefreshModels}
           onSaveGeneral={(patch) => {
             setHumanName(patch.humanName);
             setProvider(patch.provider);

@@ -15,6 +15,19 @@ import { WsHub } from './wsHub.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+function ensureLocalhostNoProxy(): void {
+  const existing = (process.env.NO_PROXY || process.env.no_proxy || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const next = Array.from(new Set([...existing, 'localhost', '127.0.0.1']));
+  const joined = next.join(',');
+  process.env.NO_PROXY = joined;
+  process.env.no_proxy = joined;
+}
+
+ensureLocalhostNoProxy();
+
 async function main() {
   const config = loadServerConfig();
   const app = express();
@@ -35,7 +48,7 @@ async function main() {
     onMatchReset: (roomCode) => agyRunner.onMatchReset(roomCode),
     getAgyStatus: (roomCode) => agyRunner.getStatus(roomCode),
   });
-  await engine.init();
+  await Promise.all([engine.init(), agyRunner.refreshDiscoveredModels()]);
 
   app.use('/api', createApiRouter(engine, agyRunner, sessionAuth));
 
@@ -73,10 +86,14 @@ async function main() {
           ),
         });
       } catch {
-        wsHub.sendTo(socket, {
-          type: 'state_sync',
-          state: engine.getPublicState(undefined, meta.playerId),
-        });
+        try {
+          wsHub.sendTo(socket, {
+            type: 'state_sync',
+            state: engine.getPublicState(undefined, meta.playerId),
+          });
+        } catch {
+          // Ignore if no room is initialized yet
+        }
       }
     },
     (tok) => sessionAuth.verifyToken(tok)?.playerId ?? null,

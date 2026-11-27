@@ -91,15 +91,38 @@ export interface RoundSummary {
   endedReason: 'all_guessed' | 'timeout' | 'manual';
 }
 
+export type CliProviderId = 'agy' | 'codex' | 'claude';
+
+export type ModelEffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra';
+
+export interface CliProviderStatus {
+  provider: CliProviderId;
+  label: string;
+  available: boolean;
+  path: string | null;
+  version?: string | null;
+  modelCount: number;
+  error?: string;
+}
+
 export interface AgyModelOption {
   id: string;
   label: string;
-  family: 'gemini' | 'claude' | 'gpt';
+  family: 'gemini' | 'claude' | 'gpt' | 'other';
+  provider: CliProviderId;
+  cliModel: string;
+  supportedEfforts: ModelEffortLevel[];
+  defaultEffort: ModelEffortLevel;
+  effortVariantIds?: Partial<Record<ModelEffortLevel, string>>;
+  badge?: string;
+  description?: string;
 }
 
 export interface AgyBotRunState {
   agentId: string;
   modelId: string;
+  provider?: CliProviderId;
+  effort?: ModelEffortLevel;
   displayName: string;
   running: boolean;
   lastStatus:
@@ -120,8 +143,11 @@ export interface AgyBotRunState {
 export interface AgyRunnerStatus {
   available: boolean;
   agyPath: string | null;
+  providers: CliProviderStatus[];
   autoPlayEnabled: boolean;
   selectedModels: string[];
+  defaultEffort: ModelEffortLevel;
+  modelEfforts: Record<string, ModelEffortLevel>;
   maxStepsPerRound: number;
   timeoutSec: number;
   availableModels: AgyModelOption[];

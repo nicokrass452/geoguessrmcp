@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import http from 'node:http';
+import https from 'node:https';
 import {
   calculateScore,
   clampCamera,
@@ -138,6 +140,8 @@ export interface EngineLifecycleHooks {
       allowAi: boolean;
       autoPlayEnabled?: boolean;
       selectedModels?: string[];
+      defaultEffort?: import('@geoguessr-mcp/shared').ModelEffortLevel;
+      modelEfforts?: Record<string, import('@geoguessr-mcp/shared').ModelEffortLevel>;
       maxStepsPerRound?: number;
       timeoutSec?: number;
     }
@@ -162,6 +166,8 @@ export interface MatchSetupOptions {
   maxStepsPerRound?: number | null;
   provider?: PanoramaProviderChoice;
   selectedModels?: string[];
+  defaultEffort?: import('@geoguessr-mcp/shared').ModelEffortLevel;
+  modelEfforts?: Record<string, import('@geoguessr-mcp/shared').ModelEffortLevel>;
   timeoutSec?: number;
   autoPlayEnabled?: boolean;
   autoStart?: boolean;
@@ -306,16 +312,34 @@ export class GameEngine {
   }
 
   public async refreshMcpBridgeProbe(): Promise<McpStatusInfo> {
-    const url = this.getMcpHttpHealthUrl();
-    let reachable = false;
-    try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(400) });
-      if (res.ok) {
-        reachable = true;
+    const urlStr = this.getMcpHttpHealthUrl();
+    const reachable = await new Promise<boolean>((resolve) => {
+      try {
+        const parsed = new URL(urlStr);
+        const mod = parsed.protocol === 'https:' ? https : http;
+        const req = mod.get(
+          parsed,
+          { timeout: 400 },
+          (res) => {
+            res.resume();
+            resolve(
+              typeof res.statusCode === 'number' &&
+                res.statusCode >= 200 &&
+                res.statusCode < 300
+            );
+          }
+        );
+        req.on('timeout', () => {
+          req.destroy();
+          resolve(false);
+        });
+        req.on('error', () => {
+          resolve(false);
+        });
+      } catch {
+        resolve(false);
       }
-    } catch {
-      reachable = false;
-    }
+    });
 
     if (!reachable) {
       for (const [k, hb] of this.heartbeats.entries()) {
@@ -938,6 +962,22 @@ export class GameEngine {
     const hostName = opts.humanName?.trim() || 'You (Player)';
     const autoStart = opts.autoStart ?? true;
 
+    const locations = this.panoramas.pickRandomLocations(
+      totalRounds,
+      locationMode
+    );
+    const usedMapillarySeedIds = new Set<string>();
+    const firstLocation =
+      locations[0] ?? this.panoramas.pickRandomLocations(1, locationMode)[0];
+    const { round: initialRound, initialCam } = await this.buildRoundRuntime({
+      roomCode: code,
+      roundNumber: 1,
+      location: firstLocation,
+      providerChoice,
+      usedMapillarySeedIds,
+      locationMode,
+    });
+
     const room: RoomRuntime = {
       roomCode: code,
       matchId: `match_${crypto.randomBytes(4).toString('hex')}`,
@@ -955,9 +995,9 @@ export class GameEngine {
       maxStepsPerRound,
       currentRoundNumber: 1,
       timeRemainingSec: roundDurationSec,
-      locations: this.panoramas.pickRandomLocations(totalRounds, locationMode),
-      usedMapillarySeedIds: new Set<string>(),
-      currentRound: undefined as unknown as RoundRuntime,
+      locations,
+      usedMapillarySeedIds,
+      currentRound: initialRound,
       completedRounds: [],
       activityFeed: [],
       humans: new Map<string, MutablePlayerState>(),
@@ -986,11 +1026,13 @@ export class GameEngine {
       allowAi: room.mode !== 'solo' && room.mode !== 'pvp',
       autoPlayEnabled: opts.autoPlayEnabled,
       selectedModels: opts.selectedModels,
+      defaultEffort: opts.defaultEffort,
+      modelEfforts: opts.modelEfforts,
       maxStepsPerRound: opts.maxStepsPerRound ?? undefined,
       timeoutSec: opts.timeoutSec,
     });
 
-    await this.setupRound(room, 1);
+    this.activateRound(room, initialRound, initialCam);
 
     this.pushActivity(
       room,
@@ -1004,23 +1046,22 @@ export class GameEngine {
     return this.getPublicState(room.roomCode, hostId);
   }
 
-  private async setupRound(room: RoomRuntime, roundNumber: number): Promise<void> {
-    this.stopRoomTimer(room);
-    room.lastActivityAt = Date.now();
-    room.currentRoundNumber = roundNumber;
-    room.timeRemainingSec = room.roundDurationSec;
-
-    const location =
-      room.locations[roundNumber - 1] ??
-      this.panoramas.pickRandomLocations(1, room.locationMode)[0];
+  private async buildRoundRuntime(opts: {
+    roomCode: string;
+    roundNumber: number;
+    location: CatalogLocation;
+    providerChoice: PanoramaProviderChoice;
+    usedMapillarySeedIds: Set<string>;
+    locationMode: LocationMode;
+  }): Promise<{ round: RoundRuntime; initialCam: CameraView }> {
     const scene = await this.panoramas.buildRoundScene(
-      location,
-      room.providerChoice,
-      room.usedMapillarySeedIds,
-      room.locationMode
+      opts.location,
+      opts.providerChoice,
+      opts.usedMapillarySeedIds,
+      opts.locationMode
     );
     if (scene.mapillarySeedId) {
-      room.usedMapillarySeedIds.add(scene.mapillarySeedId);
+      opts.usedMapillarySeedIds.add(scene.mapillarySeedId);
     }
 
     const opaqueToReal = new Map<string, string>();
@@ -1036,19 +1077,34 @@ export class GameEngine {
     const spawnNode = scene.nodes.get(scene.spawnRealKey)!;
     const initialCam = clampCamera(spawnNode.initialHeading, 0, 0);
 
-    room.currentRound = {
-      roundId: `r_${room.roomCode}_${roundNumber}_${crypto.randomBytes(3).toString('hex')}`,
-      roundNumber,
-      status: 'active',
-      scene,
-      opaqueToReal,
-      realToOpaque,
-      spawnOpaqueId,
-      summary: null,
+    return {
+      round: {
+        roundId: `r_${opts.roomCode}_${opts.roundNumber}_${crypto.randomBytes(3).toString('hex')}`,
+        roundNumber: opts.roundNumber,
+        status: 'active',
+        scene,
+        opaqueToReal,
+        realToOpaque,
+        spawnOpaqueId,
+        summary: null,
+      },
+      initialCam,
     };
+  }
+
+  private activateRound(
+    room: RoomRuntime,
+    round: RoundRuntime,
+    initialCam: CameraView
+  ): void {
+    this.stopRoomTimer(room);
+    room.lastActivityAt = Date.now();
+    room.currentRoundNumber = round.roundNumber;
+    room.timeRemainingSec = room.roundDurationSec;
+    room.currentRound = round;
 
     for (const human of room.humans.values()) {
-      human.currentOpaqueNodeId = spawnOpaqueId;
+      human.currentOpaqueNodeId = round.spawnOpaqueId;
       human.camera = { ...initialCam };
       human.stepCount = 0;
       human.hasGuessed = false;
@@ -1058,7 +1114,7 @@ export class GameEngine {
     }
 
     for (const agent of room.agents.values()) {
-      agent.currentOpaqueNodeId = spawnOpaqueId;
+      agent.currentOpaqueNodeId = round.spawnOpaqueId;
       agent.camera = { ...initialCam };
       agent.stepCount = 0;
       agent.explorationCalls = 0;
@@ -1104,8 +1160,24 @@ export class GameEngine {
       room.mode !== 'solo' &&
       room.mode !== 'pvp'
     ) {
-      this.lifecycleHooks.onRoundStarted?.(roundNumber, room.roomCode);
+      this.lifecycleHooks.onRoundStarted?.(round.roundNumber, room.roomCode);
     }
+  }
+
+  private async setupRound(room: RoomRuntime, roundNumber: number): Promise<void> {
+    this.stopRoomTimer(room);
+    const location =
+      room.locations[roundNumber - 1] ??
+      this.panoramas.pickRandomLocations(1, room.locationMode)[0];
+    const { round, initialCam } = await this.buildRoundRuntime({
+      roomCode: room.roomCode,
+      roundNumber,
+      location,
+      providerChoice: room.providerChoice,
+      usedMapillarySeedIds: room.usedMapillarySeedIds,
+      locationMode: room.locationMode,
+    });
+    this.activateRound(room, round, initialCam);
   }
 
   private stopRoomTimer(room: RoomRuntime): void {

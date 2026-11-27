@@ -16,11 +16,16 @@ import {
   type ActivityEvent,
   type AgyRunnerStatus,
   type HumanPlayerView,
+  type ModelEffortLevel,
   type PlayerInfo,
   type RoundStatus,
 } from '@geoguessr-mcp/shared';
 import { api } from '../lib/api';
-import { getModelUiMeta, getPlayerInitials } from '../lib/uiHelpers';
+import {
+  EFFORT_LABELS,
+  getModelUiMeta,
+  getPlayerInitials,
+} from '../lib/uiHelpers';
 
 interface AgentHudProps {
   agents: PlayerInfo[];
@@ -87,6 +92,7 @@ export function AgentHud({
   const updateBudget = async (patch: {
     maxStepsPerRound?: number;
     timeoutSec?: number;
+    defaultEffort?: ModelEffortLevel;
   }) => {
     if (!agyRunner || agyBusy) return;
     setAgyBusy(true);
@@ -168,13 +174,17 @@ export function AgentHud({
 
         {agents.map((agent) => {
           const run = agyRunner?.runs.find((r) => r.agentId === agent.id);
+          const opt = agyRunner?.availableModels.find(
+            (m) => m.id === agent.model
+          );
           const meta = agent.model
-            ? getModelUiMeta(agent.model, undefined, agent.name)
+            ? getModelUiMeta(agent.model, opt?.family, agent.name, opt)
             : {
                 badge: getPlayerInitials(agent.name),
                 color: agent.color,
                 shortName: agent.name,
                 tierLabel: '',
+                providerShort: 'MCP',
               };
           const showRetry =
             Boolean(run) &&
@@ -288,7 +298,7 @@ export function AgentHud({
                       <div className="flex flex-wrap gap-1">
                         {agyRunner.availableModels.map((m) => {
                           const selected = agyRunner.selectedModels.includes(m.id);
-                          const meta = getModelUiMeta(m.id, m.family, m.label);
+                          const meta = getModelUiMeta(m.id, m.family, m.label, m);
                           return (
                             <button
                               key={m.id}
@@ -301,14 +311,36 @@ export function AgentHud({
                                   : 'border-white/10 bg-[#121a2e] text-[#8d97ae] hover:text-white'
                               }`}
                             >
-                              {meta.shortName}
+                              {meta.shortName}{' '}
+                              <span className="text-[10px] opacity-70">
+                                {meta.providerShort}
+                              </span>
                             </button>
                           );
                         })}
                       </div>
 
                       <div className="flex items-center justify-between gap-1.5">
-                        <div className="flex items-center gap-1">
+                        <div className="flex flex-wrap items-center gap-1">
+                          <select
+                            aria-label="Reasoning effort"
+                            value={agyRunner.defaultEffort}
+                            disabled={agyBusy}
+                            onChange={(e) =>
+                              updateBudget({
+                                defaultEffort: e.target.value as ModelEffortLevel,
+                              })
+                            }
+                            className="rounded-lg border border-white/15 bg-[#121a2e] px-1.5 py-1 text-[11px] text-white"
+                          >
+                            {(['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] as const).map(
+                              (eff) => (
+                                <option key={eff} value={eff}>
+                                  {EFFORT_LABELS[eff]}
+                                </option>
+                              )
+                            )}
+                          </select>
                           <select
                             aria-label="Max steps per round"
                             value={agyRunner.maxStepsPerRound}

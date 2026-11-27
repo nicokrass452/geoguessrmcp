@@ -7,8 +7,10 @@ import {
   copyTextToClipboard,
 } from '../lib/playerSession';
 import {
+  EFFORT_LABELS,
   FALLBACK_AGY_MODELS,
   formatDurationLabel,
+  getEffectiveEffort,
   getModelUiMeta,
   getPlayerInitials,
   LOCATION_META,
@@ -78,13 +80,22 @@ export function WaitingRoomLobby({
   const aiRoster = [
     ...configuredModelIds.map((modelId) => {
       const opt = availableModels.find((m) => m.id === modelId);
-      const meta = getModelUiMeta(modelId, opt?.family, opt?.label);
+      const meta = getModelUiMeta(modelId, opt?.family, opt?.label, opt);
+      const effort = opt
+        ? getEffectiveEffort(
+            opt,
+            agyRunner?.defaultEffort,
+            agyRunner?.modelEfforts
+          )
+        : undefined;
       return {
         key: `model:${modelId}`,
         modelId,
         name: meta.shortName,
         badge: meta.badge,
         color: meta.color,
+        providerShort: meta.providerShort,
+        effortLabel: effort ? EFFORT_LABELS[effort] : undefined,
         removable: true,
       };
     }),
@@ -94,6 +105,8 @@ export function WaitingRoomLobby({
       name: a.name,
       badge: getPlayerInitials(a.name),
       color: a.color,
+      providerShort: 'MCP',
+      effortLabel: undefined,
       removable: false,
     })),
   ];
@@ -315,8 +328,13 @@ export function WaitingRoomLobby({
                   <b className="flex-1 truncate text-[15px] font-bold text-white">
                     {ai.name}
                   </b>
+                  {ai.effortLabel && (
+                    <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] font-semibold text-[#cbd5e1]">
+                      {ai.effortLabel}
+                    </span>
+                  )}
                   <span className="rounded-full bg-[#a78bfa]/15 px-2.5 py-0.5 text-[12px] font-bold text-[#a78bfa]">
-                    AI
+                    {ai.providerShort}
                   </span>
                   {isHost && ai.removable && (
                     <button
@@ -349,9 +367,9 @@ export function WaitingRoomLobby({
                   </button>
 
                   {showAddAi && unselectedModels.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-1.5 pl-[52px]">
+                    <div className="mt-3 flex max-h-[160px] flex-wrap gap-1.5 overflow-y-auto custom-scrollbar pl-[52px]">
                       {unselectedModels.map((m) => {
-                        const meta = getModelUiMeta(m.id, m.family, m.label);
+                        const meta = getModelUiMeta(m.id, m.family, m.label, m);
                         return (
                           <button
                             key={m.id}
@@ -365,6 +383,9 @@ export function WaitingRoomLobby({
                               className="h-2.5 w-2.5 rounded-full"
                             />
                             <span>{meta.shortName}</span>
+                            <span className="text-[10px] text-[#8d97ae]">
+                              {meta.providerShort}
+                            </span>
                           </button>
                         );
                       })}

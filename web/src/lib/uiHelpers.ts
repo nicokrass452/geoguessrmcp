@@ -1,11 +1,79 @@
-import type { AgyModelOption, LocationMode } from '@geoguessr-mcp/shared';
+import type {
+  AgyModelOption,
+  CliProviderId,
+  LocationMode,
+  ModelEffortLevel,
+} from '@geoguessr-mcp/shared';
+
+export const EFFORT_LABELS: Record<ModelEffortLevel, string> = {
+  low: 'Low',
+  medium: 'Med',
+  high: 'High',
+  xhigh: 'XHigh',
+  max: 'Max',
+  ultra: 'Ultra',
+};
+
+export const PROVIDER_META: Record<
+  CliProviderId,
+  { label: string; shortLabel: string; color: string }
+> = {
+  agy: { label: 'Antigravity (agy)', shortLabel: 'AGY', color: '#22c55e' },
+  codex: { label: 'Codex CLI', shortLabel: 'Codex', color: '#2dd4bf' },
+  claude: { label: 'Claude Code CLI', shortLabel: 'Claude', color: '#f59e0b' },
+};
 
 export const FALLBACK_AGY_MODELS: AgyModelOption[] = [
-  { id: 'gemini-4-hydrogen-medium', label: 'Gemini 4 Hydrogen', family: 'gemini' },
-  { id: 'claude-sonnet-5-5-medium', label: 'Claude Sonnet 5.5', family: 'claude' },
-  { id: 'gemini-4-carbon-high', label: 'Gemini 4 Carbon', family: 'gemini' },
-  { id: 'gemini-4-neon-high', label: 'Gemini 4 Neon', family: 'gemini' },
-  { id: 'claude-opus-5-5-high', label: 'Claude Opus 5.5', family: 'claude' },
+  {
+    id: 'agy:gemini-4-hydrogen',
+    label: 'Gemini 4 Hydrogen',
+    family: 'gemini',
+    provider: 'agy',
+    cliModel: 'gemini-4-hydrogen',
+    supportedEfforts: ['low', 'medium', 'high', 'xhigh'],
+    defaultEffort: 'medium',
+    badge: '4H',
+  },
+  {
+    id: 'agy:claude-sonnet-5-5',
+    label: 'Claude Sonnet 5.5',
+    family: 'claude',
+    provider: 'agy',
+    cliModel: 'claude-sonnet-5-5',
+    supportedEfforts: ['low', 'medium', 'high'],
+    defaultEffort: 'medium',
+    badge: 'S55',
+  },
+  {
+    id: 'agy:gemini-4-carbon',
+    label: 'Gemini 4 Carbon',
+    family: 'gemini',
+    provider: 'agy',
+    cliModel: 'gemini-4-carbon',
+    supportedEfforts: ['low', 'medium', 'high'],
+    defaultEffort: 'high',
+    badge: '4C',
+  },
+  {
+    id: 'agy:gemini-4-neon',
+    label: 'Gemini 4 Neon',
+    family: 'gemini',
+    provider: 'agy',
+    cliModel: 'gemini-4-neon',
+    supportedEfforts: ['low', 'medium', 'high', 'xhigh'],
+    defaultEffort: 'high',
+    badge: '4N',
+  },
+  {
+    id: 'agy:claude-opus-5-5',
+    label: 'Claude Opus 5.5',
+    family: 'claude',
+    provider: 'agy',
+    cliModel: 'claude-opus-5-5',
+    supportedEfforts: ['low', 'medium', 'high'],
+    defaultEffort: 'high',
+    badge: 'O55',
+  },
 ];
 
 export interface ModelUiMeta {
@@ -13,58 +81,206 @@ export interface ModelUiMeta {
   color: string;
   shortName: string;
   tierLabel: string;
+  providerShort: string;
 }
 
 const MODEL_META_BY_ID: Record<string, ModelUiMeta> = {
   'gemini-4-hydrogen-medium': {
-    badge: 'H',
+    badge: '4H',
     color: '#818cf8',
     shortName: 'Gemini Hydrogen',
     tierLabel: 'Fast · casual',
+    providerShort: 'AGY',
+  },
+  'agy:gemini-4-hydrogen': {
+    badge: '4H',
+    color: '#818cf8',
+    shortName: 'Gemini 4 Hydrogen',
+    tierLabel: 'AGY · Fast',
+    providerShort: 'AGY',
   },
   'claude-sonnet-5-5-medium': {
-    badge: 'C',
+    badge: 'S55',
     color: '#f59e0b',
-    shortName: 'Claude Sonnet',
-    tierLabel: 'Balanced',
+    shortName: 'Claude Sonnet 5.5',
+    tierLabel: 'AGY · Balanced',
+    providerShort: 'AGY',
+  },
+  'agy:claude-sonnet-5-5': {
+    badge: 'S55',
+    color: '#f59e0b',
+    shortName: 'Claude Sonnet 5.5',
+    tierLabel: 'AGY · Balanced',
+    providerShort: 'AGY',
   },
   'gemini-4-carbon-high': {
-    badge: 'G4',
+    badge: '4C',
     color: '#e879f9',
-    shortName: 'Gemini Carbon',
-    tierLabel: 'Hard',
+    shortName: 'Gemini 4 Carbon',
+    tierLabel: 'AGY · Strong',
+    providerShort: 'AGY',
+  },
+  'agy:gemini-4-carbon': {
+    badge: '4C',
+    color: '#e879f9',
+    shortName: 'Gemini 4 Carbon',
+    tierLabel: 'AGY · Strong',
+    providerShort: 'AGY',
   },
   'gemini-4-neon-high': {
-    badge: 'N',
+    badge: '4N',
     color: '#c084fc',
-    shortName: 'Gemini Neon',
-    tierLabel: 'Hard',
+    shortName: 'Gemini 4 Neon',
+    tierLabel: 'AGY · Strong',
+    providerShort: 'AGY',
+  },
+  'agy:gemini-4-neon': {
+    badge: '4N',
+    color: '#c084fc',
+    shortName: 'Gemini 4 Neon',
+    tierLabel: 'AGY · Strong',
+    providerShort: 'AGY',
   },
   'claude-opus-5-5-high': {
-    badge: 'CO',
+    badge: 'O55',
     color: '#fb923c',
-    shortName: 'Claude Opus',
-    tierLabel: 'Hard',
+    shortName: 'Claude Opus 5.5',
+    tierLabel: 'AGY · Flagship',
+    providerShort: 'AGY',
+  },
+  'agy:claude-opus-5-5': {
+    badge: 'O55',
+    color: '#fb923c',
+    shortName: 'Claude Opus 5.5',
+    tierLabel: 'AGY · Flagship',
+    providerShort: 'AGY',
   },
 };
 
+function inferProviderShort(modelId: string, option?: AgyModelOption): string {
+  if (option?.provider) return PROVIDER_META[option.provider].shortLabel;
+  if (modelId.startsWith('codex:')) return 'Codex';
+  if (modelId.startsWith('claude:')) return 'Claude';
+  return 'AGY';
+}
+
+function inferFamilyColor(
+  modelId: string,
+  family?: AgyModelOption['family']
+): string {
+  const f =
+    family ??
+    (/claude|opus|sonnet|haiku|fable/i.test(modelId)
+      ? 'claude'
+      : /gpt|codex/i.test(modelId)
+        ? 'gpt'
+        : 'gemini');
+  if (f === 'claude') {
+    if (/opus|fable/i.test(modelId)) return '#fb923c';
+    if (/haiku/i.test(modelId)) return '#fbbf24';
+    return '#f59e0b';
+  }
+  if (f === 'gpt') {
+    if (/sol/i.test(modelId)) return '#34d399';
+    if (/terra/i.test(modelId)) return '#2dd4bf';
+    if (/luna/i.test(modelId)) return '#38bdf8';
+    return '#14b8a6';
+  }
+  if (/carbon/i.test(modelId)) return '#e879f9';
+  if (/neon/i.test(modelId)) return '#c084fc';
+  if (/hydrogen/i.test(modelId)) return '#818cf8';
+  return '#a78bfa';
+}
+
+function inferBadge(
+  modelId: string,
+  fallbackLabel?: string,
+  option?: AgyModelOption
+): string {
+  if (option?.badge) return option.badge;
+  const raw = modelId.replace(/^(agy|codex|claude):/, '').toLowerCase();
+  if (raw.includes('4-carbon')) return '4C';
+  if (raw.includes('4-hydrogen')) return '4H';
+  if (raw.includes('4-neon')) return '4N';
+  if (raw.includes('4-argon')) return '4A';
+  if (raw.includes('3.8-flash')) return '3.8';
+  if (raw.includes('opus-5-5')) return 'O55';
+  if (raw.includes('sonnet-5-5')) return 'S55';
+  if (raw.includes('5.6-sol')) return '5.6S';
+  if (raw.includes('5.6-terra')) return '5.6T';
+  if (raw.includes('5.6-luna')) return '5.6L';
+  if (raw.includes('5.4-mini')) return '5.4m';
+  const gptVer = raw.match(/gpt-(\d+\.\d+)/);
+  if (gptVer) return gptVer[1];
+  if (raw === 'opus') return 'Opus';
+  if (raw === 'sonnet') return 'Son';
+  if (raw === 'haiku') return 'Hai';
+  if (raw === 'fable') return 'Fab';
+  const clean = (fallbackLabel || raw).replace(/[^a-zA-Z0-9.\s-]/g, ' ').trim();
+  const tokens = clean.split(/[\s-]+/).filter(Boolean);
+  if (tokens.length >= 2) {
+    return (tokens[0][0] + tokens[1].slice(0, 2)).toUpperCase();
+  }
+  return clean.slice(0, 3).toUpperCase() || 'AI';
+}
+
+export function getEffectiveEffort(
+  model: AgyModelOption,
+  defaultEffort?: ModelEffortLevel,
+  overrides?: Record<string, ModelEffortLevel>
+): ModelEffortLevel {
+  const rank: Record<ModelEffortLevel, number> = {
+    low: 0,
+    medium: 1,
+    high: 2,
+    xhigh: 3,
+    max: 4,
+    ultra: 5,
+  };
+  const supported =
+    model.supportedEfforts && model.supportedEfforts.length > 0
+      ? model.supportedEfforts
+      : [model.defaultEffort || 'medium'];
+  const requested = overrides?.[model.id] ?? defaultEffort ?? model.defaultEffort;
+  if (supported.includes(requested)) return requested;
+  const reqRank = rank[requested] ?? 1;
+  let best = supported[0];
+  let bestDist = Infinity;
+  for (const cand of supported) {
+    const cRank = rank[cand] ?? 1;
+    const dist = Math.abs(cRank - reqRank) + (cRank > reqRank ? 0.1 : 0);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = cand;
+    }
+  }
+  return best;
+}
+
 export function getModelUiMeta(
   modelId: string,
-  family?: 'gemini' | 'claude' | 'gpt',
-  fallbackLabel?: string
+  family?: AgyModelOption['family'],
+  fallbackLabel?: string,
+  option?: AgyModelOption
 ): ModelUiMeta {
-  if (MODEL_META_BY_ID[modelId]) {
+  const providerShort = inferProviderShort(modelId, option);
+  if (MODEL_META_BY_ID[modelId] && !option?.badge) {
     return MODEL_META_BY_ID[modelId];
   }
-  const color =
-    family === 'claude' ? '#f59e0b' : family === 'gpt' ? '#2dd4bf' : '#a78bfa';
-  const badge =
-    family === 'claude' ? 'C' : family === 'gpt' ? 'O' : 'G';
+  const preset = MODEL_META_BY_ID[modelId];
+  if (preset) return preset;
+
+  const effCount = option?.supportedEfforts?.length ?? 0;
   return {
-    badge,
-    color,
-    shortName: fallbackLabel || modelId,
-    tierLabel: 'AI opponent',
+    badge: inferBadge(modelId, fallbackLabel, option),
+    color: inferFamilyColor(modelId, family ?? option?.family),
+    shortName:
+      option?.label ||
+      fallbackLabel ||
+      modelId.replace(/^(agy|codex|claude):/, ''),
+    tierLabel:
+      effCount > 0 ? `${providerShort} · ${effCount} efforts` : providerShort,
+    providerShort,
   };
 }
 

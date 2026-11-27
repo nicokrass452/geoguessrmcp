@@ -4,6 +4,7 @@ import type {
   HealthInfo,
   LocationMode,
   McpStatusInfo,
+  ModelEffortLevel,
   MoveDirection,
   PanoramaProviderChoice,
   PublicGameState,
@@ -29,6 +30,8 @@ export interface StartMatchPayload {
   playerId?: string;
   roomCode?: string;
   selectedModels?: string[];
+  defaultEffort?: ModelEffortLevel;
+  modelEfforts?: Record<string, ModelEffortLevel>;
   maxStepsPerRound?: number;
   timeoutSec?: number;
   autoPlayEnabled?: boolean;
@@ -242,6 +245,8 @@ export const api = {
   updateAgyConfig: (opts: {
     autoPlayEnabled?: boolean;
     selectedModels?: string[];
+    defaultEffort?: ModelEffortLevel;
+    modelEfforts?: Record<string, ModelEffortLevel>;
     maxStepsPerRound?: number;
     timeoutSec?: number;
   }) =>
@@ -249,6 +254,13 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({
         ...opts,
+        roomCode: getSessionRoomCode() || undefined,
+      }),
+    }),
+  refreshAgyModels: () =>
+    requestJson<AgyRunnerStatus>('/api/agy/refresh-models', {
+      method: 'POST',
+      body: JSON.stringify({
         roomCode: getSessionRoomCode() || undefined,
       }),
     }),

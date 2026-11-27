@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, Copy, Settings, Terminal, X } from 'lucide-react';
+import { Check, Copy, RefreshCw, Settings, Terminal, X } from 'lucide-react';
 import type {
   AgyRunnerStatus,
   HealthInfo,
@@ -18,6 +18,7 @@ export interface SettingsModalProps {
   health: HealthInfo | null;
   mcpStatus?: McpStatusInfo;
   agyRunner?: AgyRunnerStatus;
+  onRefreshModels?: () => Promise<void> | void;
   onSaveGeneral: (patch: {
     humanName: string;
     provider: PanoramaProviderChoice;
@@ -36,6 +37,7 @@ export function SettingsModal({
   health,
   mcpStatus,
   agyRunner,
+  onRefreshModels,
   onSaveGeneral,
   onClose,
 }: SettingsModalProps) {
@@ -46,6 +48,17 @@ export function SettingsModal({
   const [draftSteps, setDraftSteps] = useState(maxStepsPerRound);
   const [draftTimeout, setDraftTimeout] = useState(timeoutSec);
   const [copiedStdio, setCopiedStdio] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    if (!onRefreshModels || refreshing) return;
+    setRefreshing(true);
+    try {
+      await onRefreshModels();
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const handleCopyStdio = async () => {
     const ok = await copyTextToClipboard(MCP_SNIPPET_STDIO);
@@ -190,23 +203,80 @@ export function SettingsModal({
             </>
           ) : (
             <div className="space-y-4 text-sm">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="rounded-xl border border-white/10 bg-[#0b1020] p-3.5">
-                  <div className="text-xs font-bold uppercase tracking-wider text-[#8d97ae]">
-                    Built-in AI Runner
+              <div className="rounded-xl border border-white/10 bg-[#0b1020] p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-wider text-[#8d97ae]">
+                      Detected AI CLIs ({agyRunner?.availableModels?.length ?? 0}{' '}
+                      models)
+                    </div>
+                    <div className="text-[11px] text-[#8d97ae] mt-0.5">
+                      Local model catalogs &amp; reasoning efforts discovered from installed CLIs
+                    </div>
                   </div>
-                  <div className="mt-1 font-semibold text-white">
-                    {agyRunner?.available
-                      ? 'Ready (agy CLI found)'
-                      : 'Unavailable (set AGY_BIN)'}
-                  </div>
+                  {onRefreshModels && (
+                    <button
+                      type="button"
+                      disabled={refreshing}
+                      onClick={() => void handleRefresh()}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-[#18223a] px-2.5 py-1.5 text-xs font-semibold text-white hover:border-[#22c55e] disabled:opacity-50 transition"
+                    >
+                      <RefreshCw
+                        className={`h-3 w-3 ${refreshing ? 'animate-spin' : ''}`}
+                      />
+                      <span>{refreshing ? 'Refreshing…' : 'Refresh models'}</span>
+                    </button>
+                  )}
                 </div>
-                <div className="rounded-xl border border-white/10 bg-[#0b1020] p-3.5">
-                  <div className="text-xs font-bold uppercase tracking-wider text-[#8d97ae]">
-                    External MCP Bridge
-                  </div>
-                  <div className="mt-1 font-semibold text-white">{mcpLabel}</div>
+
+                <div className="space-y-1.5">
+                  {(agyRunner?.providers ?? []).map((p) => (
+                    <div
+                      key={p.provider}
+                      className="flex items-center justify-between gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] px-2.5 py-2"
+                    >
+                      <div className="min-w-0 flex items-center gap-2">
+                        <span
+                          className={`inline-block h-2 w-2 shrink-0 rounded-full ${
+                            p.available ? 'bg-[#22c55e]' : 'bg-[#64748b]'
+                          }`}
+                        />
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold text-white truncate">
+                            {p.label}{' '}
+                            {p.version && (
+                              <span className="font-mono text-[11px] text-[#8d97ae]">
+                                {p.version}
+                              </span>
+                            )}
+                          </div>
+                          {p.error && (
+                            <div className="text-[11px] text-amber-300 truncate">
+                              {p.error}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-white/[0.06] px-2 py-0.5 text-[11px] font-semibold text-[#cbd5e1]">
+                        {p.available ? `${p.modelCount} models` : 'Not found'}
+                      </span>
+                    </div>
+                  ))}
+                  {(!agyRunner?.providers || agyRunner.providers.length === 0) && (
+                    <div className="text-xs text-[#8d97ae]">
+                      {agyRunner?.available
+                        ? 'CLI runner ready'
+                        : 'No AI CLIs detected yet (agy, codex, claude)'}
+                    </div>
+                  )}
                 </div>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-[#0b1020] p-3.5">
+                <div className="text-xs font-bold uppercase tracking-wider text-[#8d97ae]">
+                  External MCP Bridge
+                </div>
+                <div className="mt-1 font-semibold text-white">{mcpLabel}</div>
               </div>
 
               <div className="space-y-2">

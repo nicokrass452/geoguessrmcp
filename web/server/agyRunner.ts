@@ -1,27 +1,53 @@
-import { execFile, execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type {
   AgyBotRunState,
   AgyModelOption,
   AgyRunnerStatus,
+  CliProviderId,
+  CliProviderStatus,
   MatchStatus,
+  ModelEffortLevel,
 } from '@geoguessr-mcp/shared';
 import type { ServerConfig } from './config.js';
 import type { GameEngine } from './gameEngine.js';
+import {
+  discoverCliModels,
+  findCliBinaries,
+  getCuratedFallbackModels,
+  isEffortLevel,
+  type CliExecutableSpec,
+} from './modelDiscovery.js';
 
-export const AVAILABLE_AGY_MODELS: AgyModelOption[] = [
-  { id: 'gemini-4-hydrogen-medium', label: 'Gemini 4 Hydrogen', family: 'gemini' },
-  { id: 'claude-sonnet-5-5-medium', label: 'Claude Sonnet 5.5', family: 'claude' },
-  { id: 'gemini-4-carbon-high', label: 'Gemini 4 Carbon', family: 'gemini' },
-  { id: 'gemini-4-neon-high', label: 'Gemini 4 Neon', family: 'gemini' },
-  { id: 'claude-opus-5-5-high', label: 'Claude Opus 5.5', family: 'claude' },
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+export const AVAILABLE_AGY_MODELS: AgyModelOption[] = getCuratedFallbackModels();
+
+const EFFORT_RANK: Record<ModelEffortLevel, number> = {
+  low: 0,
+  medium: 1,
+  high: 2,
+  xhigh: 3,
+  max: 4,
+  ultra: 5,
+};
+
+const PREFERRED_DEFAULT_MODELS = [
+  'agy:gemini-4-hydrogen',
+  'agy:claude-sonnet-5-5',
+  'gemini-4-hydrogen-medium',
+  'claude-sonnet-5-5-medium',
 ];
 
 interface AgyRoomConfig {
   autoPlayEnabled: boolean;
   selectedModels: string[];
+  defaultEffort: ModelEffortLevel;
+  modelEfforts: Record<string, ModelEffortLevel>;
   maxStepsPerRound: number;
   timeoutSec: number;
 }
@@ -30,41 +56,23 @@ interface ActiveProcessEntry {
   child: ChildProcess;
   timer: NodeJS.Timeout;
   logStream?: fs.WriteStream;
+  tempFiles: string[];
   agentId: string;
   modelId: string;
   roundNumber: number;
   roomCode: string;
 }
 
-function findAgyBinary(): string | null {
-  const candidates = [
-    process.env.AGY_BIN?.trim(),
-    path.join(os.homedir(), 'AppData', 'Local', 'agy', 'bin', 'agy.exe'),
-  ].filter(Boolean) as string[];
-
-  for (const c of candidates) {
-    if (fs.existsSync(c)) return c;
-  }
-
-  try {
-    const cmd = process.platform === 'win32' ? 'where' : 'which';
-    const out = execFileSync(cmd, ['agy'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-      timeout: 2000,
-    });
-    const first = out.split(/\r?\n/).find((line) => line.trim().length > 0);
-    if (first && fs.existsSync(first.trim())) return first.trim();
-  } catch {
-    // not found on PATH
-  }
-  return null;
-}
-
 function killProcessTree(child: ChildProcess): void {
   const pid = child.pid;
   if (process.platform === 'win32' && pid) {
-    execFile('taskkill', ['/PID', String(pid), '/T', '/F'], () => {});
+    execFile(
+      'taskkill',
+      ['/PID', String(pid), '/T', '/F'],
+      { windowsHide: true },
+      () => {}
+    );
+    return;
   }
   try {
     child.kill('SIGKILL');
@@ -73,8 +81,31 @@ function killProcessTree(child: ChildProcess): void {
   }
 }
 
+function cleanupTempFiles(files: string[]): void {
+  for (const f of files) {
+    try {
+      if (fs.existsSync(f)) fs.unlinkSync(f);
+    } catch {
+      // ignore cleanup error
+    }
+  }
+}
+
+function resolveMcpServerDistEntry(): string {
+  const candidates = [
+    path.resolve(process.cwd(), 'mcp-server', 'dist', 'index.js'),
+    path.resolve(__dirname, '..', '..', 'mcp-server', 'dist', 'index.js'),
+    path.resolve(__dirname, '..', '..', '..', 'mcp-server', 'dist', 'index.js'),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  return candidates[0];
+}
+
 export function modelIdToAgentId(modelId: string, roomCode?: string): string {
-  const base = `agy_${modelId.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+  const cleanId = modelId.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const base = cleanId.startsWith('agy_') ? cleanId : `agy_${cleanId}`;
   const cleanRoom = roomCode?.trim().toUpperCase();
   if (!cleanRoom || cleanRoom === 'ARENA1' || cleanRoom === 'DEFAULT') {
     return base;
@@ -85,14 +116,19 @@ export function modelIdToAgentId(modelId: string, roomCode?: string): string {
 export class AgyRunner {
   private readonly config: ServerConfig;
   private readonly engine: GameEngine;
-  private readonly agyPath: string | null;
   private readonly sandboxDir: string;
   private readonly logsDir: string;
 
+  private executables: Record<CliProviderId, CliExecutableSpec | null>;
+  private providers: CliProviderStatus[];
+  private availableModels: AgyModelOption[] = getCuratedFallbackModels();
+
   private defaultSelectedModels: string[] = [
-    'gemini-4-hydrogen-medium',
-    'claude-sonnet-5-5-medium',
+    'agy:gemini-4-hydrogen',
+    'agy:claude-sonnet-5-5',
   ];
+  private defaultEffort: ModelEffortLevel = 'medium';
+  private defaultModelEfforts: Record<string, ModelEffortLevel> = {};
   private defaultMaxStepsPerRound = 5;
   private defaultTimeoutSec = 120;
 
@@ -108,17 +144,178 @@ export class AgyRunner {
   constructor(config: ServerConfig, engine: GameEngine) {
     this.config = config;
     this.engine = engine;
-    this.agyPath = findAgyBinary();
+    this.executables = findCliBinaries();
+    this.providers = [
+      {
+        provider: 'agy',
+        label: 'Antigravity (agy)',
+        available: Boolean(this.executables.agy),
+        path: this.executables.agy?.displayPath ?? null,
+        version: null,
+        modelCount: 0,
+      },
+      {
+        provider: 'codex',
+        label: 'Codex CLI',
+        available: Boolean(this.executables.codex),
+        path: this.executables.codex?.displayPath ?? null,
+        version: null,
+        modelCount: 0,
+      },
+      {
+        provider: 'claude',
+        label: 'Claude Code CLI',
+        available: Boolean(this.executables.claude),
+        path: this.executables.claude?.displayPath ?? null,
+        version: null,
+        modelCount: 0,
+      },
+    ];
     this.sandboxDir = path.join(config.cacheDir, 'agy-sandbox');
     this.logsDir = path.join(config.cacheDir, 'agy-logs');
     fs.mkdirSync(this.sandboxDir, { recursive: true });
     fs.mkdirSync(this.logsDir, { recursive: true });
   }
 
-  private sanitizeModels(models?: string[]): string[] {
+  private hasAnyProvider(): boolean {
+    return Boolean(
+      this.executables.agy || this.executables.codex || this.executables.claude
+    );
+  }
+
+  private pickDefaultModels(models: AgyModelOption[]): string[] {
+    const chosen: string[] = [];
+    for (const candidate of PREFERRED_DEFAULT_MODELS) {
+      const resolved = this.resolveModelOption(candidate, models);
+      if (resolved && !chosen.includes(resolved.option.id)) {
+        chosen.push(resolved.option.id);
+      }
+      if (chosen.length >= 2) break;
+    }
+    if (chosen.length > 0) return chosen;
+    return models.slice(0, 2).map((m) => m.id);
+  }
+
+  public async refreshDiscoveredModels(roomCode?: string): Promise<AgyRunnerStatus> {
+    try {
+      const catalog = await discoverCliModels();
+      this.executables = catalog.executables;
+      this.providers = catalog.providers;
+      this.availableModels =
+        catalog.models.length > 0 ? catalog.models : getCuratedFallbackModels();
+      AVAILABLE_AGY_MODELS.splice(
+        0,
+        AVAILABLE_AGY_MODELS.length,
+        ...this.availableModels
+      );
+
+      const sanitizedDefaults = this.sanitizeModels(this.defaultSelectedModels);
+      this.defaultSelectedModels =
+        sanitizedDefaults.length > 0
+          ? sanitizedDefaults
+          : this.pickDefaultModels(this.availableModels);
+
+      for (const cfg of this.roomConfigs.values()) {
+        if (cfg.selectedModels.length > 0) {
+          const updated = this.sanitizeModels(cfg.selectedModels);
+          cfg.selectedModels =
+            updated.length > 0
+              ? updated
+              : this.pickDefaultModels(this.availableModels);
+        }
+      }
+    } catch {
+      // keep existing catalog on discovery failure
+    }
+    return this.getStatus(roomCode);
+  }
+
+  private resolveModelOption(
+    idOrAlias: string,
+    pool: AgyModelOption[] = this.availableModels
+  ): { option: AgyModelOption; impliedEffort?: ModelEffortLevel } | null {
+    const exact = pool.find((m) => m.id === idOrAlias);
+    if (exact) return { option: exact };
+
+    const byCliModel = pool.find((m) => m.cliModel === idOrAlias);
+    if (byCliModel) return { option: byCliModel };
+
+    for (const m of pool) {
+      if (!m.effortVariantIds) continue;
+      for (const [effort, variantId] of Object.entries(m.effortVariantIds)) {
+        if (variantId === idOrAlias && isEffortLevel(effort)) {
+          return { option: m, impliedEffort: effort };
+        }
+      }
+    }
+    return null;
+  }
+
+  private resolveEffortForModel(
+    model: AgyModelOption,
+    requested?: ModelEffortLevel
+  ): ModelEffortLevel {
+    const supported =
+      model.supportedEfforts.length > 0
+        ? model.supportedEfforts
+        : [model.defaultEffort || 'medium'];
+    if (!requested) return model.defaultEffort ?? supported[0] ?? 'medium';
+    if (supported.includes(requested)) return requested;
+
+    const reqRank = EFFORT_RANK[requested] ?? 1;
+    let best = supported[0];
+    let bestDist = Infinity;
+    for (const candidate of supported) {
+      const rank = EFFORT_RANK[candidate] ?? 1;
+      const dist = Math.abs(rank - reqRank) + (rank > reqRank ? 0.1 : 0);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = candidate;
+      }
+    }
+    return best;
+  }
+
+  private sanitizeModels(
+    models?: string[],
+    captureEfforts?: Record<string, ModelEffortLevel>
+  ): string[] {
     if (!Array.isArray(models)) return [...this.defaultSelectedModels];
-    const validSet = new Set(AVAILABLE_AGY_MODELS.map((m) => m.id));
-    return Array.from(new Set(models.filter((m) => validSet.has(m))));
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const raw of models) {
+      const resolved = this.resolveModelOption(raw);
+      if (!resolved) continue;
+      if (!seen.has(resolved.option.id)) {
+        seen.add(resolved.option.id);
+        out.push(resolved.option.id);
+      }
+      if (
+        captureEfforts &&
+        resolved.impliedEffort &&
+        !captureEfforts[resolved.option.id]
+      ) {
+        captureEfforts[resolved.option.id] = resolved.impliedEffort;
+      }
+    }
+    return out;
+  }
+
+  private sanitizeModelEfforts(
+    efforts?: Record<string, ModelEffortLevel>
+  ): Record<string, ModelEffortLevel> {
+    if (!efforts || typeof efforts !== 'object') return {};
+    const out: Record<string, ModelEffortLevel> = {};
+    for (const [rawKey, rawVal] of Object.entries(efforts)) {
+      if (!isEffortLevel(rawVal)) continue;
+      const resolved = this.resolveModelOption(rawKey);
+      if (!resolved) continue;
+      out[resolved.option.id] = this.resolveEffortForModel(
+        resolved.option,
+        rawVal
+      );
+    }
+    return out;
   }
 
   private clampSteps(steps: number): number {
@@ -136,6 +333,8 @@ export class AgyRunner {
       cfg = {
         autoPlayEnabled: false,
         selectedModels: [...this.defaultSelectedModels],
+        defaultEffort: this.defaultEffort,
+        modelEfforts: { ...this.defaultModelEfforts },
         maxStepsPerRound: this.defaultMaxStepsPerRound,
         timeoutSec: this.defaultTimeoutSec,
       };
@@ -145,7 +344,12 @@ export class AgyRunner {
   }
 
   private isAgentInRoom(agentId: string, modelId: string, roomCode: string): boolean {
-    return agentId === modelIdToAgentId(modelId, roomCode);
+    if (agentId === modelIdToAgentId(modelId, roomCode)) return true;
+    const resolved = this.resolveModelOption(modelId);
+    if (resolved && agentId === modelIdToAgentId(resolved.option.id, roomCode)) {
+      return true;
+    }
+    return false;
   }
 
   public getStatus(roomCode?: string): AgyRunnerStatus {
@@ -163,13 +367,16 @@ export class AgyRunner {
       });
 
     return {
-      available: Boolean(this.agyPath),
-      agyPath: this.agyPath,
+      available: this.hasAnyProvider(),
+      agyPath: this.executables.agy?.displayPath ?? null,
+      providers: this.providers,
       autoPlayEnabled: cfg.autoPlayEnabled,
       selectedModels: [...cfg.selectedModels],
+      defaultEffort: cfg.defaultEffort,
+      modelEfforts: { ...cfg.modelEfforts },
       maxStepsPerRound: cfg.maxStepsPerRound,
       timeoutSec: cfg.timeoutSec,
-      availableModels: AVAILABLE_AGY_MODELS,
+      availableModels: this.availableModels,
       runs,
     };
   }
@@ -200,6 +407,8 @@ export class AgyRunner {
       matchStatus: MatchStatus;
       autoPlayEnabled?: boolean;
       selectedModels?: string[];
+      defaultEffort?: ModelEffortLevel;
+      modelEfforts?: Record<string, ModelEffortLevel>;
       maxStepsPerRound?: number;
       timeoutSec?: number;
     }
@@ -209,14 +418,30 @@ export class AgyRunner {
     this.roomRoundState.set(targetRoom, { roundNumber: 1, active: false });
 
     const existingCfg = this.roomConfigs.get(targetRoom);
+    const baseEfforts = opts.modelEfforts
+      ? this.sanitizeModelEfforts(opts.modelEfforts)
+      : existingCfg
+        ? { ...existingCfg.modelEfforts }
+        : { ...this.defaultModelEfforts };
+
     const selectedModels = Array.isArray(opts.selectedModels)
-      ? this.sanitizeModels(opts.selectedModels)
+      ? this.sanitizeModels(opts.selectedModels, baseEfforts)
       : existingCfg
         ? [...existingCfg.selectedModels]
         : [...this.defaultSelectedModels];
 
     if (opts.allowAi && Array.isArray(opts.selectedModels) && selectedModels.length > 0) {
       this.defaultSelectedModels = [...selectedModels];
+    }
+
+    const defaultEffort = isEffortLevel(opts.defaultEffort)
+      ? opts.defaultEffort
+      : existingCfg?.defaultEffort ?? this.defaultEffort;
+    if (isEffortLevel(opts.defaultEffort)) {
+      this.defaultEffort = defaultEffort;
+    }
+    if (opts.modelEfforts) {
+      this.defaultModelEfforts = { ...baseEfforts };
     }
 
     const maxStepsPerRound =
@@ -244,19 +469,22 @@ export class AgyRunner {
     this.roomConfigs.set(targetRoom, {
       autoPlayEnabled,
       selectedModels,
+      defaultEffort,
+      modelEfforts: baseEfforts,
       maxStepsPerRound,
       timeoutSec,
     });
 
     if (
       opts.allowAi &&
-      this.agyPath &&
+      this.hasAnyProvider() &&
       selectedModels.length > 0 &&
       (opts.matchStatus === 'lobby' || autoPlayEnabled)
     ) {
       for (const modelId of selectedModels) {
-        const opt = AVAILABLE_AGY_MODELS.find((m) => m.id === modelId);
-        if (!opt) continue;
+        const resolved = this.resolveModelOption(modelId);
+        if (!resolved || !this.executables[resolved.option.provider]) continue;
+        const opt = resolved.option;
         this.engine.registerManagedAgent({
           agentId: modelIdToAgentId(opt.id, targetRoom),
           name: opt.label,
@@ -299,7 +527,7 @@ export class AgyRunner {
       }
     }
 
-    if (cfg.autoPlayEnabled && cfg.selectedModels.length > 0 && this.agyPath) {
+    if (cfg.autoPlayEnabled && cfg.selectedModels.length > 0 && this.hasAnyProvider()) {
       this.triggerCurrentRound(undefined, targetRoom);
     }
   }
@@ -314,6 +542,8 @@ export class AgyRunner {
   public updateConfig(opts: {
     autoPlayEnabled?: boolean;
     selectedModels?: string[];
+    defaultEffort?: ModelEffortLevel;
+    modelEfforts?: Record<string, ModelEffortLevel>;
     maxStepsPerRound?: number;
     timeoutSec?: number;
     roomCode?: string;
@@ -325,6 +555,17 @@ export class AgyRunner {
     if (typeof opts.autoPlayEnabled === 'boolean') {
       cfg.autoPlayEnabled = opts.autoPlayEnabled;
     }
+    if (isEffortLevel(opts.defaultEffort)) {
+      cfg.defaultEffort = opts.defaultEffort;
+      this.defaultEffort = opts.defaultEffort;
+    }
+    if (opts.modelEfforts) {
+      cfg.modelEfforts = {
+        ...cfg.modelEfforts,
+        ...this.sanitizeModelEfforts(opts.modelEfforts),
+      };
+      this.defaultModelEfforts = { ...cfg.modelEfforts };
+    }
     if (typeof opts.maxStepsPerRound === 'number') {
       cfg.maxStepsPerRound = this.clampSteps(opts.maxStepsPerRound);
       this.defaultMaxStepsPerRound = cfg.maxStepsPerRound;
@@ -335,7 +576,7 @@ export class AgyRunner {
     }
 
     if (Array.isArray(opts.selectedModels)) {
-      const nextModels = this.sanitizeModels(opts.selectedModels);
+      const nextModels = this.sanitizeModels(opts.selectedModels, cfg.modelEfforts);
       const removed = cfg.selectedModels.filter((m) => !nextModels.includes(m));
       for (const oldModelId of removed) {
         const agentId = modelIdToAgentId(oldModelId, targetRoom);
@@ -350,11 +591,12 @@ export class AgyRunner {
     }
 
     const roomState = this.getRoomRoundState(targetRoom);
-    if (this.agyPath && cfg.selectedModels.length > 0) {
+    if (this.hasAnyProvider() && cfg.selectedModels.length > 0) {
       if (roomState.active && cfg.autoPlayEnabled) {
         for (const modelId of cfg.selectedModels) {
-          const opt = AVAILABLE_AGY_MODELS.find((m) => m.id === modelId);
-          if (!opt) continue;
+          const resolved = this.resolveModelOption(modelId);
+          if (!resolved || !this.executables[resolved.option.provider]) continue;
+          const opt = resolved.option;
           this.engine.registerManagedAgent({
             agentId: modelIdToAgentId(opt.id, targetRoom),
             name: opt.label,
@@ -368,8 +610,9 @@ export class AgyRunner {
         }
       } else if (!roomState.active) {
         for (const modelId of cfg.selectedModels) {
-          const opt = AVAILABLE_AGY_MODELS.find((m) => m.id === modelId);
-          if (!opt) continue;
+          const resolved = this.resolveModelOption(modelId);
+          if (!resolved || !this.executables[resolved.option.provider]) continue;
+          const opt = resolved.option;
           this.engine.registerManagedAgent({
             agentId: modelIdToAgentId(opt.id, targetRoom),
             name: opt.label,
@@ -389,9 +632,9 @@ export class AgyRunner {
     overrideModels?: string[],
     roomCode?: string
   ): AgyRunnerStatus {
-    if (!this.agyPath) {
+    if (!this.hasAnyProvider()) {
       throw new Error(
-        'agy.exe CLI binary was not found on this machine. Install Antigravity CLI or set AGY_BIN.'
+        'No AI CLI binaries (agy, codex, claude) were found on this machine.'
       );
     }
     const targetRoom = this.resolveRoomCode(roomCode);
@@ -402,13 +645,13 @@ export class AgyRunner {
 
     const cfg = this.getRoomConfig(targetRoom);
     if (Array.isArray(overrideModels)) {
-      cfg.selectedModels = this.sanitizeModels(overrideModels);
+      cfg.selectedModels = this.sanitizeModels(overrideModels, cfg.modelEfforts);
     }
     // Keep AI opponents active for subsequent rounds once summoned in this match
     cfg.autoPlayEnabled = true;
 
     const targets = cfg.selectedModels
-      .map((id) => AVAILABLE_AGY_MODELS.find((m) => m.id === id))
+      .map((id) => this.resolveModelOption(id)?.option ?? null)
       .filter((m): m is AgyModelOption => Boolean(m));
 
     for (const model of targets) {
@@ -439,7 +682,31 @@ export class AgyRunner {
     roomCode: string,
     cfg: AgyRoomConfig
   ): void {
-    if (!this.agyPath) return;
+    const execSpec = this.executables[model.provider];
+    const effort = this.resolveEffortForModel(
+      model,
+      cfg.modelEfforts[model.id] ?? cfg.defaultEffort
+    );
+
+    if (!execSpec) {
+      const runState: AgyBotRunState = {
+        agentId,
+        modelId: model.id,
+        provider: model.provider,
+        effort,
+        displayName: model.label,
+        running: false,
+        lastStatus: 'error',
+        lastMessage: `${model.provider} CLI binary is not available on this host`,
+        roundNumber,
+        startedAt: new Date().toISOString(),
+        explorationCalls: 0,
+        maxStepsPerRound: cfg.maxStepsPerRound,
+      };
+      this.runStates.set(agentId, runState);
+      this.engine.setManagedAgentRoundAvailability(agentId, false, 'disconnected');
+      return;
+    }
 
     const maxStepsPerRound = cfg.maxStepsPerRound;
     const timeoutSec = cfg.timeoutSec;
@@ -452,7 +719,7 @@ export class AgyRunner {
       logStream = fs.createWriteStream(logFile, { flags: 'a' });
       logStream.on('error', () => {});
       logStream.write(
-        `\n=== Round ${roundNumber} | ${model.label} (${model.id}) | agentId=${agentId} | maxSteps=${maxStepsPerRound} | timeout=${timeoutSec}s | ${new Date().toISOString()} ===\n`
+        `\n=== Round ${roundNumber} | ${model.label} (${model.id}) [${model.provider} effort=${effort}] | agentId=${agentId} | maxSteps=${maxStepsPerRound} | timeout=${timeoutSec}s | ${new Date().toISOString()} ===\n`
       );
     } catch {
       logStream = undefined;
@@ -461,10 +728,12 @@ export class AgyRunner {
     const runState: AgyBotRunState = {
       agentId,
       modelId: model.id,
+      provider: model.provider,
+      effort,
       displayName: model.label,
       running: true,
       lastStatus: 'spawning',
-      lastMessage: `Starting fresh ${model.label} chat for Round ${roundNumber}`,
+      lastMessage: `Starting fresh ${model.label} (${effort}) for Round ${roundNumber}`,
       roundNumber,
       startedAt: new Date().toISOString(),
       explorationCalls: 0,
@@ -474,7 +743,7 @@ export class AgyRunner {
     this.engine.logAgentActivity(
       agentId,
       'agy_spawn',
-      `Summoned fresh ${model.label} session (max ${maxStepsPerRound} steps, ${timeoutSec}s timeout)`
+      `Summoned ${model.label} via ${model.provider} (${effort}, max ${maxStepsPerRound} steps, ${timeoutSec}s timeout)`
     );
 
     const maxFollowupCalls = Math.max(1, maxStepsPerRound - 1);
@@ -492,13 +761,30 @@ export class AgyRunner {
       `4. Call submit_guess with { "agent_id": "${agentId}", "latitude": <number>, "longitude": <number>, "reasoning": "<concise summary of visual clues observed>", "wager": <optional integer chip wager when bettingEnabled is true> } well before timeout.`,
     ].join('\n');
 
-    const child = spawn(
-      this.agyPath,
-      [
+    const backendUrl = `http://localhost:${this.config.port}`;
+    const mcpEntry = resolveMcpServerDistEntry();
+    const sharedEnv: NodeJS.ProcessEnv = {
+      ...process.env,
+      GEOGUESSR_AGENT_ID: agentId,
+      GEOGUESSR_AGENT_NAME: model.label,
+      GEOGUESSR_AGENT_MODEL: model.id,
+      GEOGUESSR_ROOM_CODE: roomCode,
+      GAME_BACKEND_URL: backendUrl,
+    };
+
+    const tempFiles: string[] = [];
+    let providerArgs: string[] = [];
+
+    if (model.provider === 'agy') {
+      const cliModelId =
+        model.effortVariantIds?.[effort] ??
+        model.effortVariantIds?.[model.defaultEffort] ??
+        model.cliModel;
+      providerArgs = [
         '-p',
         prompt,
         '--model',
-        model.id,
+        cliModelId,
         '--mode',
         'auto',
         '--dangerously-skip-permissions',
@@ -507,17 +793,95 @@ export class AgyRunner {
         `${timeoutSec + 10}s`,
         '--output-format',
         'text',
-      ],
+      ];
+    } else if (model.provider === 'claude') {
+      const mcpConfigPath = path.join(
+        os.tmpdir(),
+        `geoarena-claude-mcp-${agentId}-r${roundNumber}-${Date.now()}.json`
+      );
+      fs.writeFileSync(
+        mcpConfigPath,
+        JSON.stringify(
+          {
+            mcpServers: {
+              'geoguessr-arena': {
+                command: process.execPath,
+                args: [
+                  mcpEntry,
+                  '--transport',
+                  'stdio',
+                  '--backend-url',
+                  backendUrl,
+                  '--agent-id',
+                  agentId,
+                ],
+                env: {
+                  GEOGUESSR_AGENT_ID: agentId,
+                  GEOGUESSR_AGENT_NAME: model.label,
+                  GEOGUESSR_AGENT_MODEL: model.id,
+                  GEOGUESSR_ROOM_CODE: roomCode,
+                  GAME_BACKEND_URL: backendUrl,
+                },
+              },
+            },
+          },
+          null,
+          2
+        )
+      );
+      tempFiles.push(mcpConfigPath);
+      providerArgs = [
+        '-p',
+        prompt,
+        '--model',
+        model.cliModel,
+        '--effort',
+        effort,
+        '--mcp-config',
+        mcpConfigPath,
+        '--strict-mcp-config',
+        '--allowedTools',
+        'mcp__geoguessr-arena__*',
+        '--dangerously-skip-permissions',
+        '--output-format',
+        'text',
+      ];
+    } else {
+      // Codex CLI
+      const mcpArgs = [
+        mcpEntry,
+        '--transport',
+        'stdio',
+        '--backend-url',
+        backendUrl,
+        '--agent-id',
+        agentId,
+      ];
+      providerArgs = [
+        'exec',
+        '--model',
+        model.cliModel,
+        '-c',
+        `model_reasoning_effort=${JSON.stringify(effort)}`,
+        '-c',
+        `mcp_servers.geoguessr_arena.command=${JSON.stringify(process.execPath)}`,
+        '-c',
+        `mcp_servers.geoguessr_arena.args=${JSON.stringify(mcpArgs)}`,
+        '-s',
+        'read-only',
+        '--skip-git-repo-check',
+        '--ephemeral',
+        prompt,
+      ];
+    }
+
+    const child = spawn(
+      execSpec.command,
+      [...execSpec.prefixArgs, ...providerArgs],
       {
         cwd: this.sandboxDir,
-        env: {
-          ...process.env,
-          GEOGUESSR_AGENT_ID: agentId,
-          GEOGUESSR_AGENT_NAME: model.label,
-          GEOGUESSR_AGENT_MODEL: model.id,
-          GEOGUESSR_ROOM_CODE: roomCode,
-          GAME_BACKEND_URL: `http://localhost:${this.config.port}`,
-        },
+        env: sharedEnv,
+        windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe'],
       }
     );
@@ -540,6 +904,7 @@ export class AgyRunner {
       this.activeProcs.delete(agentId);
       this.engine.setAgentRoundDeadline(agentId, null);
       killProcessTree(child);
+      cleanupTempFiles(active.tempFiles);
 
       const info = this.engine.getAgentInfo(agentId);
       runState.running = false;
@@ -568,6 +933,7 @@ export class AgyRunner {
       child,
       timer,
       logStream,
+      tempFiles,
       agentId,
       modelId: model.id,
       roundNumber,
@@ -576,8 +942,12 @@ export class AgyRunner {
 
     child.on('error', (err) => {
       clearTimeout(timer);
-      if (this.activeProcs.get(agentId)?.child === child) {
+      const active = this.activeProcs.get(agentId);
+      if (active?.child === child) {
         this.activeProcs.delete(agentId);
+        cleanupTempFiles(active.tempFiles);
+      } else {
+        cleanupTempFiles(tempFiles);
       }
       this.engine.setAgentRoundDeadline(agentId, null);
       runState.running = false;
@@ -597,10 +967,11 @@ export class AgyRunner {
       clearTimeout(timer);
       const currentEntry = this.activeProcs.get(agentId);
       if (!currentEntry || currentEntry.child !== child) {
-        // Already stopped/timed out via stopSingleRun or timeout handler
+        cleanupTempFiles(tempFiles);
         return;
       }
       this.activeProcs.delete(agentId);
+      cleanupTempFiles(currentEntry.tempFiles);
       this.engine.setAgentRoundDeadline(agentId, null);
 
       const info = this.engine.getAgentInfo(agentId);
@@ -662,6 +1033,7 @@ export class AgyRunner {
     if (!entry) return;
     clearTimeout(entry.timer);
     this.activeProcs.delete(agentId);
+    cleanupTempFiles(entry.tempFiles);
     this.engine.setAgentRoundDeadline(agentId, null);
     if (entry.logStream && !entry.logStream.writableEnded) {
       entry.logStream.end(
@@ -715,6 +1087,7 @@ export class AgyRunner {
   public shutdown(): void {
     for (const entry of this.activeProcs.values()) {
       clearTimeout(entry.timer);
+      cleanupTempFiles(entry.tempFiles);
       if (entry.logStream && !entry.logStream.writableEnded) {
         entry.logStream.end(
           `\n=== Closed (server shutdown) | ${new Date().toISOString()} ===\n`

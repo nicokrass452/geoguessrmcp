@@ -71,6 +71,9 @@ export default function App() {
     getSessionViewMode()
   );
   const [health, setHealth] = useState<HealthInfo | null>(null);
+  const [homeAgyRunner, setHomeAgyRunner] = useState<
+    import('@geoguessr-mcp/shared').AgyRunnerStatus | undefined
+  >(undefined);
   const [showSetup, setShowSetup] = useState(false);
   const [showDeveloperModal, setShowDeveloperModal] = useState(false);
   const [busyAction, setBusyAction] = useState(false);
@@ -86,9 +89,25 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (health) return;
-    api.getHealth().then(setHealth).catch(() => {});
-  }, [health, wsConnected]);
+    if (!health) {
+      api.getHealth().then(setHealth).catch(() => {});
+    }
+    if (!homeAgyRunner && !state?.agyRunner) {
+      api.getAgyStatus().then(setHomeAgyRunner).catch(() => {});
+    }
+  }, [health, homeAgyRunner, state?.agyRunner, wsConnected]);
+
+  const handleRefreshModels = useCallback(async () => {
+    try {
+      const updated = await api.refreshAgyModels();
+      setHomeAgyRunner(updated);
+      setState((prev) =>
+        prev ? { ...prev, agyRunner: updated } : prev
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, [setError, setState]);
 
   // Save last game summary for Home screen footer
   useEffect(() => {
@@ -454,7 +473,8 @@ export default function App() {
         initialProvider={state?.provider || health?.defaultProvider || 'auto'}
         health={health}
         mcpStatus={state?.mcpStatus || health?.mcpStatus}
-        agyRunner={state?.agyRunner}
+        agyRunner={state?.agyRunner ?? homeAgyRunner}
+        onRefreshModels={handleRefreshModels}
         starting={busyAction}
         error={error}
         onClearError={() => setError(null)}
@@ -674,6 +694,8 @@ export default function App() {
               provider: state.provider,
               humanName: state.human.name,
               selectedModels: allowAiForPlayAgain ? playAgainModels : [],
+              defaultEffort: state.agyRunner?.defaultEffort,
+              modelEfforts: state.agyRunner?.modelEfforts,
               maxStepsPerRound: state.agyRunner?.maxStepsPerRound,
               timeoutSec: state.agyRunner?.timeoutSec,
               autoPlayEnabled:
@@ -712,6 +734,7 @@ export default function App() {
           health={health}
           mcpStatus={state.mcpStatus}
           agyRunner={state.agyRunner}
+          onRefreshModels={handleRefreshModels}
           onSaveGeneral={(patch) => {
             void api.updateAgyConfig({
               maxStepsPerRound: patch.maxStepsPerRound,

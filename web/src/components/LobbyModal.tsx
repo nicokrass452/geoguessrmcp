@@ -5,10 +5,17 @@ import type {
   GameMode,
   HealthInfo,
   LocationMode,
+  ModelEffortLevel,
   PanoramaProviderChoice,
 } from '@geoguessr-mcp/shared';
 import type { StartMatchPayload } from '../lib/api';
-import { FALLBACK_AGY_MODELS, getModelUiMeta, LOCATION_META } from '../lib/uiHelpers';
+import {
+  EFFORT_LABELS,
+  FALLBACK_AGY_MODELS,
+  getEffectiveEffort,
+  getModelUiMeta,
+  LOCATION_META,
+} from '../lib/uiHelpers';
 
 interface LobbyModalProps {
   initialMode: GameMode;
@@ -62,8 +69,14 @@ export function LobbyModal({
   const [selectedModels, setSelectedModels] = useState<string[]>(
     agyRunner?.selectedModels && agyRunner.selectedModels.length > 0
       ? agyRunner.selectedModels
-      : ['gemini-4-hydrogen-medium', 'claude-sonnet-5-5-medium']
+      : ['agy:gemini-4-hydrogen', 'agy:claude-sonnet-5-5']
   );
+  const [defaultEffort, setDefaultEffort] = useState<ModelEffortLevel>(
+    agyRunner?.defaultEffort ?? 'medium'
+  );
+  const [modelEfforts, setModelEfforts] = useState<
+    Record<string, ModelEffortLevel>
+  >(agyRunner?.modelEfforts ?? {});
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const availableModels =
@@ -86,6 +99,19 @@ export function LobbyModal({
       return [...prev, modelId];
     });
   };
+
+  const effortOptions: ModelEffortLevel[] = [
+    'low',
+    'medium',
+    'high',
+    'xhigh',
+    'max',
+    'ultra',
+  ].filter((lvl) =>
+    availableModels.some((m) =>
+      m.supportedEfforts?.includes(lvl as ModelEffortLevel)
+    )
+  ) as ModelEffortLevel[];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0b1020]/80 p-4 backdrop-blur-md">
@@ -156,22 +182,46 @@ export function LobbyModal({
           </div>
 
           {allowsAi && (
-            <div>
-              <label className="mb-1.5 block font-semibold text-[#eef1f8]">
-                AI opponents
-              </label>
-              <div className="flex flex-wrap gap-2">
+            <div className="space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label className="font-semibold text-[#eef1f8]">
+                  AI opponents
+                </label>
+                {effortOptions.length > 0 && (
+                  <div className="inline-flex items-center rounded-lg border border-white/10 bg-[#0b1020] p-0.5 gap-0.5">
+                    {effortOptions.map((eff) => (
+                      <button
+                        key={eff}
+                        type="button"
+                        onClick={() => {
+                          setDefaultEffort(eff);
+                          setModelEfforts({});
+                        }}
+                        className={`rounded-md px-2 py-0.5 text-[11px] font-semibold transition ${
+                          defaultEffort === eff
+                            ? 'bg-[#18223a] text-white'
+                            : 'text-[#8d97ae] hover:text-white'
+                        }`}
+                      >
+                        {EFFORT_LABELS[eff]}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex max-h-[150px] flex-wrap gap-1.5 overflow-y-auto custom-scrollbar pr-1">
                 {availableModels.map((m) => {
-                  const meta = getModelUiMeta(m.id, m.family, m.label);
+                  const meta = getModelUiMeta(m.id, m.family, m.label, m);
                   const active = (
                     mode === '1v1' ? selectedModels.slice(0, 1) : selectedModels
                   ).includes(m.id);
+                  const eff = getEffectiveEffort(m, defaultEffort, modelEfforts);
                   return (
                     <button
                       key={m.id}
                       type="button"
                       onClick={() => toggleModel(m.id)}
-                      className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold transition ${
+                      className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition ${
                         active
                           ? 'border-[#22c55e] bg-[#22c55e]/10 text-white'
                           : 'border-white/10 bg-[#0b1020] text-[#8d97ae] hover:text-white'
@@ -179,11 +229,14 @@ export function LobbyModal({
                     >
                       <span
                         style={{ backgroundColor: meta.color }}
-                        className="grid h-5 w-5 place-items-center rounded-full text-[10px] font-extrabold text-[#0b1020]"
+                        className="grid h-5 w-5 place-items-center rounded-full text-[9px] font-extrabold text-[#0b1020]"
                       >
                         {meta.badge}
                       </span>
                       <span>{meta.shortName}</span>
+                      <span className="text-[10px] text-[#8d97ae]">
+                        {meta.providerShort} · {EFFORT_LABELS[eff]}
+                      </span>
                     </button>
                   );
                 })}
@@ -376,6 +429,8 @@ export function LobbyModal({
                 humanName: humanName.trim() || 'You',
                 maxStepsPerRound,
                 selectedModels: finalModels,
+                defaultEffort,
+                modelEfforts,
                 autoPlayEnabled: allowsAi && finalModels.length > 0,
               });
             }}

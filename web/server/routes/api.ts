@@ -5,6 +5,8 @@ import type { AgyRunner } from '../agyRunner.js';
 import type { GameEngine } from '../gameEngine.js';
 import type { SessionAuth } from '../sessionAuth.js';
 
+const EffortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
+
 const NewMatchSchema = z.object({
   mode: z
     .enum(['1v1', 'ffa', 'pvp_ai', 'pvp', 'solo', 'spectator'])
@@ -23,6 +25,8 @@ const NewMatchSchema = z.object({
   playerId: z.string().trim().min(1).max(80).optional(),
   roomCode: z.string().trim().min(1).max(24).optional(),
   selectedModels: z.array(z.string().min(1)).optional(),
+  defaultEffort: EffortSchema.optional(),
+  modelEfforts: z.record(z.string().min(1), EffortSchema).optional(),
   maxStepsPerRound: z.number().int().min(2).max(20).optional(),
   timeoutSec: z.number().int().min(30).max(300).optional(),
   autoPlayEnabled: z.boolean().optional(),
@@ -81,6 +85,8 @@ const RegisterAgentSchema = z.object({
 const AgyConfigSchema = z.object({
   autoPlayEnabled: z.boolean().optional(),
   selectedModels: z.array(z.string().min(1)).optional(),
+  defaultEffort: EffortSchema.optional(),
+  modelEfforts: z.record(z.string().min(1), EffortSchema).optional(),
   maxStepsPerRound: z.number().int().min(2).max(20).optional(),
   timeoutSec: z.number().int().min(30).max(300).optional(),
   roomCode: z.string().trim().min(1).max(24).optional(),
@@ -642,6 +648,21 @@ export function createApiRouter(
     }
     const ctx = extractContext(req);
     res.json(agyRunner.getStatus(ctx.roomCode));
+  });
+
+  router.post('/agy/refresh-models', async (req: Request, res: Response) => {
+    try {
+      if (!agyRunner) {
+        res.status(501).json({ error: 'AgyRunner is not initialized' });
+        return;
+      }
+      const ctx = extractContext(req);
+      const status = await agyRunner.refreshDiscoveredModels(ctx.roomCode);
+      engine.notifyStateChanged(ctx.roomCode);
+      res.json(status);
+    } catch (err) {
+      handleError(res, err);
+    }
   });
 
   router.post('/agy/config', (req: Request, res: Response) => {
