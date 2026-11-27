@@ -1,20 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import {
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  ArrowUp,
-  Compass,
-  Minus,
-  Navigation,
-  Plus,
-  RotateCcw,
-} from 'lucide-react';
+import { Minus, Navigation, Plus, RotateCcw } from 'lucide-react';
 import {
   angularDifference,
   clampCamera,
-  headingToCompass,
   normalizeHeading,
   zoomToFov,
   type AvailableMove,
@@ -124,7 +113,10 @@ export function PanoramaViewer({
 
     let renderer: THREE.WebGLRenderer | null = null;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        powerPreference: 'high-performance',
+      });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       renderer.setSize(width, height);
       renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -196,9 +188,12 @@ export function PanoramaViewer({
           const srcW = (hFov / 360) * img.naturalWidth;
           const srcH = (cur.fov / 180) * img.naturalHeight;
           const centerX = (normalizeHeading(cur.heading) / 360) * img.naturalWidth;
-          const centerY = ((0.5 - cur.pitch / 180) * img.naturalHeight);
+          const centerY = (0.5 - cur.pitch / 180) * img.naturalHeight;
           const sx = centerX - srcW / 2;
-          const sy = Math.max(0, Math.min(img.naturalHeight - srcH, centerY - srcH / 2));
+          const sy = Math.max(
+            0,
+            Math.min(img.naturalHeight - srcH, centerY - srcH / 2)
+          );
 
           ctx.clearRect(0, 0, w, h);
           if (sx < 0) {
@@ -363,7 +358,8 @@ export function PanoramaViewer({
     const onKeyDown = (e: KeyboardEvent) => {
       if (
         document.activeElement?.tagName === 'INPUT' ||
-        document.activeElement?.tagName === 'TEXTAREA'
+        document.activeElement?.tagName === 'TEXTAREA' ||
+        document.activeElement?.tagName === 'SELECT'
       ) {
         return;
       }
@@ -424,19 +420,8 @@ export function PanoramaViewer({
     applyCamera(cur.heading, cur.pitch, cur.zoom + delta);
   };
 
-  const movesByDirection = useMemo(() => {
-    const map = new Map<MoveDirection, AvailableMove>();
-    for (const move of availableMoves) {
-      const prev = map.get(move.relativeDirection);
-      if (!prev) {
-        map.set(move.relativeDirection, move);
-      }
-    }
-    return map;
-  }, [availableMoves]);
-
   return (
-    <div className="relative h-full w-full overflow-hidden bg-slate-950">
+    <div className="relative h-full w-full overflow-hidden bg-[#0b1020]">
       {/* Main 360 Viewport */}
       {useMapillaryView && mapillaryImageId ? (
         <div ref={mapillaryContainerRef} className="h-full w-full" />
@@ -453,76 +438,63 @@ export function PanoramaViewer({
       )}
 
       {loadingTexture && !useMapillaryView && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm">
-          <div className="rounded-xl border border-slate-700/80 bg-slate-900/90 px-4 py-2 text-sm text-slate-200 shadow-xl">
-            Rendering 360° street panorama...
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-[#0b1020]/60 backdrop-blur-sm">
+          <div className="geo-glass px-4 py-2 text-sm text-[#eef1f8] shadow-xl">
+            Loading street view…
           </div>
         </div>
       )}
 
-      {/* Top-Center Interactive Compass Strip */}
-      <div className="pointer-events-none absolute top-16 left-1/2 z-20 -translate-x-1/2 flex flex-col items-center gap-1.5">
-        <div className="relative h-9 w-72 sm:w-88 overflow-hidden rounded-full border border-white/15 bg-slate-950/75 backdrop-blur-md shadow-lg">
-          <div className="absolute left-1/2 top-0 bottom-0 w-0.5 -translate-x-1/2 bg-sky-400/90 z-10" />
-          {COMPASS_MARKS.map((mark) => {
-            const delta = angularDifference(camera.heading, mark.deg);
-            if (Math.abs(delta) > 78) return null;
-            const leftPct = 50 + (delta / 75) * 50;
-            return (
-              <div
-                key={mark.label}
-                style={{ left: `${leftPct}%` }}
-                className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center"
-              >
-                <span
-                  className={
-                    mark.label === 'N'
-                      ? 'text-xs font-extrabold text-rose-400'
-                      : mark.major
-                        ? 'text-xs font-bold text-slate-100'
-                        : 'text-[10px] font-medium text-slate-400'
-                  }
-                >
-                  {mark.label}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-        <div className="flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/75 px-3 py-0.5 text-[11px] font-medium text-slate-300 backdrop-blur-md">
-          <Compass className="h-3 w-3 text-sky-400" />
-          <span>
-            {Math.round(camera.heading)}° {headingToCompass(camera.heading)}
-          </span>
-          <span className="text-slate-600">•</span>
-          <span>Zoom {(1 + camera.zoom).toFixed(1)}x</span>
-          {mapillaryImageId && mapillaryAccessToken && (
-            <>
-              <span className="text-slate-600">•</span>
-              <button
-                type="button"
-                onClick={() => setUseMapillaryView((v) => !v)}
-                className="pointer-events-auto text-emerald-400 hover:underline font-semibold"
-              >
-                {useMapillaryView ? 'Switch to 360° Sphere' : 'Switch to MapillaryJS'}
-              </button>
-            </>
-          )}
-        </div>
+      {/* Bottom-Left Compact Controls: Back to start, Zoom in, Zoom out */}
+      <div className="absolute bottom-4 left-4 z-20 flex flex-col gap-2">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onReturnToStart}
+          title="Back to start"
+          aria-label="Back to start"
+          className="geo-glass grid h-11 w-11 place-items-center text-white hover:border-white/30 disabled:opacity-40 transition"
+        >
+          <RotateCcw className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() =>
+            applyCamera(camera.heading, camera.pitch, camera.zoom + 0.5)
+          }
+          title="Zoom in"
+          aria-label="Zoom in"
+          className="geo-glass grid h-11 w-11 place-items-center text-white hover:border-white/30 disabled:opacity-40 transition"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() =>
+            applyCamera(camera.heading, camera.pitch, camera.zoom - 0.5)
+          }
+          title="Zoom out"
+          aria-label="Zoom out"
+          className="geo-glass grid h-11 w-11 place-items-center text-white hover:border-white/30 disabled:opacity-40 transition"
+        >
+          <Minus className="h-4 w-4" />
+        </button>
       </div>
 
-      {/* Bottom-Center On-Street Movement Chevrons */}
-      {availableMoves.length > 0 && !useMapillaryView && (
-        <div className="pointer-events-none absolute bottom-7 left-1/2 z-20 -translate-x-1/2 flex flex-col items-center gap-2">
-          <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-white/15 bg-slate-950/70 px-3 py-2 backdrop-blur-md shadow-2xl">
+      {/* Bottom-Center: Street Movement Chevrons + Sleek Compass Strip */}
+      <div className="pointer-events-none absolute bottom-5 left-1/2 z-20 -translate-x-1/2 flex flex-col items-center gap-2.5">
+        {availableMoves.length > 0 && !useMapillaryView && (
+          <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2">
             {availableMoves.map((move) => (
               <button
                 key={move.nodeId}
                 type="button"
                 disabled={disabled}
                 onClick={() => onMove({ nodeId: move.nodeId })}
-                title={`Move ${move.relativeDirection} (${move.bearingDeg}° ${move.compassDirection})`}
-                className="group flex items-center gap-1.5 rounded-xl border border-white/10 bg-slate-800/80 px-3 py-1.5 text-xs font-medium text-slate-100 transition hover:border-sky-400/60 hover:bg-sky-500/20 active:scale-95 disabled:opacity-50"
+                title={`Move ${move.relativeDirection} (${move.distanceMeters}m)`}
+                className="geo-glass flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white hover:border-[#22c55e]/60 active:scale-95 disabled:opacity-50 transition"
               >
                 <Navigation
                   style={{
@@ -531,108 +503,47 @@ export function PanoramaViewer({
                       move.bearingDeg
                     )}deg)`,
                   }}
-                  className="h-3.5 w-3.5 text-sky-400 transition-transform"
+                  className="h-3.5 w-3.5 text-[#22c55e] transition-transform"
                 />
                 <span className="capitalize">{move.relativeDirection}</span>
-                <span className="text-[10px] text-slate-400">
-                  {move.label ? `${move.label} · ` : ''}
-                  {move.distanceMeters}m
-                </span>
               </button>
             ))}
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Bottom-Left Camera & Navigation Dock */}
-      <div className="absolute bottom-5 left-5 z-20 flex flex-col gap-2">
-        {/* Directional D-Pad */}
-        <div className="grid grid-cols-3 gap-1 rounded-2xl border border-white/15 bg-slate-950/80 p-1.5 backdrop-blur-md shadow-xl w-fit">
-          <div />
-          <button
-            type="button"
-            disabled={disabled || !movesByDirection.has('forward')}
-            onClick={() => onMove({ direction: 'forward' })}
-            title="Step Forward"
-            className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-800/80 text-slate-100 hover:bg-sky-500/25 disabled:opacity-25 transition"
-          >
-            <ArrowUp className="h-4 w-4" />
-          </button>
-          <div />
-          <button
-            type="button"
-            disabled={disabled || !movesByDirection.has('left')}
-            onClick={() => onMove({ direction: 'left' })}
-            title="Step Left"
-            className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-800/80 text-slate-100 hover:bg-sky-500/25 disabled:opacity-25 transition"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            disabled={disabled || currentNodeId === spawnNodeId}
-            onClick={onReturnToStart}
-            title="Return to Start"
-            className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/35 disabled:opacity-35 transition"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            disabled={disabled || !movesByDirection.has('right')}
-            onClick={() => onMove({ direction: 'right' })}
-            title="Step Right"
-            className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-800/80 text-slate-100 hover:bg-sky-500/25 disabled:opacity-25 transition"
-          >
-            <ArrowRight className="h-4 w-4" />
-          </button>
-          <div />
-          <button
-            type="button"
-            disabled={disabled || !movesByDirection.has('backward')}
-            onClick={() => onMove({ direction: 'backward' })}
-            title="Step Backward"
-            className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-800/80 text-slate-100 hover:bg-sky-500/25 disabled:opacity-25 transition"
-          >
-            <ArrowDown className="h-4 w-4" />
-          </button>
-          <div />
+        <div className="geo-glass relative h-9 w-56 overflow-hidden px-4">
+          <div className="absolute left-1/2 top-0 h-1.5 w-0.5 -translate-x-1/2 bg-[#22c55e]" />
+          {COMPASS_MARKS.map((mark) => {
+            const delta = angularDifference(camera.heading, mark.deg);
+            if (Math.abs(delta) > 80) return null;
+            const leftPct = 50 + (delta / 78) * 50;
+            return (
+              <span
+                key={mark.label}
+                style={{ left: `${leftPct}%` }}
+                className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 font-mono text-[13px] tracking-widest ${
+                  mark.label === 'N'
+                    ? 'font-extrabold text-[#f87171]'
+                    : mark.major
+                      ? 'font-bold text-[#eef1f8]'
+                      : 'text-[11px] text-[#8d97ae]'
+                }`}
+              >
+                {mark.label}
+              </span>
+            );
+          })}
         </div>
 
-        {/* Zoom + Return to Start row */}
-        <div className="flex items-center gap-1.5 rounded-2xl border border-white/15 bg-slate-950/80 p-1.5 backdrop-blur-md shadow-xl">
+        {mapillaryImageId && mapillaryAccessToken && (
           <button
             type="button"
-            disabled={disabled}
-            onClick={() =>
-              applyCamera(camera.heading, camera.pitch, camera.zoom + 0.5)
-            }
-            title="Zoom In"
-            className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-800/80 text-slate-100 hover:bg-slate-700 transition"
+            onClick={() => setUseMapillaryView((v) => !v)}
+            className="pointer-events-auto text-xs font-semibold text-[#8d97ae] hover:text-white transition"
           >
-            <Plus className="h-4 w-4" />
+            {useMapillaryView ? 'Use 360° Sphere' : 'Use MapillaryJS'}
           </button>
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() =>
-              applyCamera(camera.heading, camera.pitch, camera.zoom - 0.5)
-            }
-            title="Zoom Out"
-            className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-800/80 text-slate-100 hover:bg-slate-700 transition"
-          >
-            <Minus className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={onReturnToStart}
-            className="flex items-center gap-1.5 rounded-lg bg-slate-800/80 px-2.5 h-8 text-xs font-medium text-slate-200 hover:bg-amber-500/25 hover:text-amber-200 transition"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            <span>Return to Start</span>
-          </button>
-        </div>
+        )}
       </div>
     </div>
   );

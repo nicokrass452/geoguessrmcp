@@ -1,19 +1,18 @@
-import {
-  Bot,
-  Coins,
-  Crown,
-  Home,
-  RotateCcw,
-  Settings2,
-  Trophy,
-  User,
-} from 'lucide-react';
+import { useState } from 'react';
+import { ChevronDown, ChevronUp, RotateCcw } from 'lucide-react';
 import type { LeaderboardEntry } from '@geoguessr-mcp/shared';
+import {
+  formatOrdinalRank,
+  getModelUiMeta,
+  getPlayerInitials,
+} from '../lib/uiHelpers';
 
 export interface FinalLeaderboardModalProps {
   entries: LeaderboardEntry[];
   totalRounds: number;
   bettingEnabled?: boolean;
+  selfPlayerId?: string;
+  isSpectator?: boolean;
   onPlayAgain: () => void;
   onOpenSetup: () => void;
   onReturnHome?: () => void;
@@ -51,25 +50,44 @@ export function formatNetChips(netChips?: number): {
   if (!isFiniteNum(netChips)) {
     return {
       label: '—',
-      badgeCls: 'border-white/10 bg-slate-900 text-slate-500',
+      badgeCls: 'border-white/10 bg-[#0b1020] text-[#8d97ae]',
     };
   }
   const normalized = netChips === 0 ? 0 : netChips;
   if (normalized > 0) {
     return {
       label: `+${normalized.toLocaleString()}`,
-      badgeCls: 'border-emerald-400/30 bg-emerald-500/15 text-emerald-300',
+      badgeCls: 'border-[#22c55e]/30 bg-[#22c55e]/15 text-[#22c55e]',
     };
   }
   if (normalized < 0) {
     return {
       label: `-${Math.abs(normalized).toLocaleString()}`,
-      badgeCls: 'border-rose-400/30 bg-rose-500/15 text-rose-300',
+      badgeCls: 'border-rose-500/30 bg-rose-500/15 text-rose-300',
     };
   }
   return {
     label: '0',
-    badgeCls: 'border-white/10 bg-slate-800/80 text-slate-300',
+    badgeCls: 'border-white/10 bg-[#18223a] text-[#8d97ae]',
+  };
+}
+
+function getEntryAvatar(
+  entry: LeaderboardEntry,
+  isSelf: boolean
+): { badge: string; color: string; displayName: string } {
+  if (!entry.isHuman && entry.model) {
+    const meta = getModelUiMeta(entry.model, undefined, entry.name);
+    return {
+      badge: meta.badge,
+      color: meta.color,
+      displayName: meta.shortName,
+    };
+  }
+  return {
+    badge: getPlayerInitials(entry.name),
+    color: isSelf ? '#60a5fa' : entry.color,
+    displayName: isSelf ? 'You' : entry.name,
   };
 }
 
@@ -77,170 +95,272 @@ export function FinalLeaderboardModal({
   entries,
   totalRounds,
   bettingEnabled,
+  selfPlayerId,
+  isSpectator = false,
   onPlayAgain,
   onOpenSetup,
   onReturnHome,
 }: FinalLeaderboardModalProps) {
+  const [showBreakdown, setShowBreakdown] = useState(false);
+
   const winner = entries[0];
+  const second = entries[1];
   const showBetting = shouldShowLeaderboardBetting(entries, bettingEnabled);
-  const winnerHasChips = winner && isFiniteNum(winner.chips);
+
+  const selfEntry = !isSpectator
+    ? entries.find((e) =>
+        selfPlayerId ? e.playerId === selfPlayerId : e.isHuman
+      )
+    : undefined;
+
+  let headline = 'Match complete!';
+  let subtitle = `${totalRounds} rounds played`;
+
+  if (selfEntry && winner) {
+    if (entries.length === 1) {
+      headline = `You scored ${selfEntry.totalScore.toLocaleString()} pts!`;
+      subtitle = `Across ${totalRounds} rounds.`;
+    } else if (selfEntry.rank === 1) {
+      headline = 'You won!';
+      const lead = second ? selfEntry.totalScore - second.totalScore : 0;
+      subtitle =
+        second && lead > 0
+          ? `Ahead of ${getEntryAvatar(second, false).displayName} by ${lead.toLocaleString()} points.`
+          : `Finished 1st across ${totalRounds} rounds.`;
+    } else {
+      headline = `You finished ${formatOrdinalRank(selfEntry.rank)}!`;
+      const gap = winner.totalScore - selfEntry.totalScore;
+      subtitle = `Just ${gap.toLocaleString()} points behind ${getEntryAvatar(winner, false).displayName}.`;
+    }
+  } else if (winner) {
+    headline = `${getEntryAvatar(winner, false).displayName} wins!`;
+    const lead = second ? winner.totalScore - second.totalScore : 0;
+    subtitle =
+      second && lead > 0
+        ? `Ahead of ${getEntryAvatar(second, false).displayName} by ${lead.toLocaleString()} points.`
+        : `${winner.totalScore.toLocaleString()} points across ${totalRounds} rounds.`;
+  }
+
+  // Podium order: [2nd, 1st, 3rd] (or just available top 3)
+  const top3 = entries.slice(0, 3);
+  const podiumOrder =
+    top3.length === 3
+      ? [top3[1], top3[0], top3[2]]
+      : top3.length === 2
+        ? [top3[1], top3[0]]
+        : top3;
+  const rest = entries.slice(3);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-md">
-      <div className="flex max-h-[90dvh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-white/15 bg-slate-900 shadow-2xl">
-        <div className="border-b border-white/10 bg-gradient-to-r from-sky-500/15 via-emerald-500/10 to-amber-500/15 p-6 text-center">
-          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-400/20 border border-amber-400/40 text-amber-300 shadow-lg">
-            <Crown className="h-7 w-7" />
-          </div>
-          <h2 className="text-2xl font-extrabold text-slate-100">
-            Match Complete!
-          </h2>
-          {winner && (
-            <p className="mt-1 text-sm text-slate-300">
-              Winner:{' '}
-              <span className="font-bold text-amber-300">{winner.name}</span>{' '}
-              with{' '}
-              <span className="font-bold text-emerald-400">
-                {winner.totalScore.toLocaleString()} pts
-              </span>{' '}
-              across {totalRounds} rounds
-              {showBetting && winnerHasChips && (
-                <>
-                  {' '}
-                  ·{' '}
-                  <span className="font-bold text-amber-300">
-                    {formatChipStack(winner.chips)} chips
-                  </span>
-                </>
-              )}
-            </p>
-          )}
+    <div className="geo-bg fixed inset-0 z-50 overflow-y-auto overflow-x-hidden page-scrollbar text-[#eef1f8]">
+      {/* Top-Left Brand */}
+      <nav className="mx-auto flex max-w-[1200px] items-center px-5 py-5 sm:px-10">
+        <div className="flex items-center gap-2.5 text-[18px] font-extrabold tracking-tight text-white">
+          <span className="grid h-[34px] w-[34px] place-items-center rounded-[10px] bg-gradient-to-br from-[#22c55e] to-[#3b82f6] text-lg">
+            🌍
+          </span>
+          <span>GeoArena</span>
         </div>
+      </nav>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-3">
-          {entries.map((entry) => {
-            const net = formatNetChips(entry.netChips);
-            return (
-              <div
-                key={entry.playerId}
-                className="rounded-2xl border border-white/10 bg-slate-950/60 p-4"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div
-                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-sm font-extrabold ${
-                        entry.rank === 1
-                          ? 'bg-amber-400 text-slate-950'
-                          : entry.rank === 2
-                            ? 'bg-slate-300 text-slate-950'
-                            : entry.rank === 3
-                              ? 'bg-amber-700 text-white'
-                              : 'bg-slate-800 text-slate-300'
-                      }`}
-                    >
-                      #{entry.rank}
-                    </div>
-                    <span
-                      className="h-3 w-3 shrink-0 rounded-full"
-                      style={{ backgroundColor: entry.color }}
-                    />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 font-bold text-slate-100">
-                        {entry.isHuman ? (
-                          <User className="h-4 w-4 shrink-0 text-sky-400" />
-                        ) : (
-                          <Bot className="h-4 w-4 shrink-0 text-rose-400" />
-                        )}
-                        <span className="truncate">{entry.name}</span>
-                      </div>
-                      <div className="text-[11px] text-slate-400">
-                        Avg: {entry.averageScore.toLocaleString()} pts · Best:{' '}
-                        {entry.bestRoundScore.toLocaleString()} pts
-                      </div>
-                    </div>
+      <div className="mx-auto max-w-[900px] px-5 pt-2 pb-14 sm:px-12 text-center">
+        <div className="text-[48px] leading-none">🏆</div>
+        <h1 className="mt-2.5 text-3xl sm:text-[44px] font-extrabold tracking-[-0.03em] text-white">
+          {headline}
+        </h1>
+        <p className="mt-1 mb-9 text-[17px] text-[#8d97ae]">{subtitle}</p>
+
+        {/* Podium */}
+        {podiumOrder.length > 0 && (
+          <div className="mb-7 flex items-end justify-center gap-3 sm:gap-[18px]">
+            {podiumOrder.map((entry) => {
+              const isSelf =
+                !isSpectator &&
+                ((selfPlayerId && entry.playerId === selfPlayerId) ||
+                  (!selfPlayerId && entry.isHuman));
+              const av = getEntryAvatar(entry, isSelf);
+              const stepHeight =
+                entry.rank === 1 ? 170 : entry.rank === 2 ? 120 : 85;
+              const stepBg =
+                entry.rank === 1
+                  ? 'linear-gradient(#ca8a04, #854d0e)'
+                  : entry.rank === 2
+                    ? '#2a3550'
+                    : '#3b2f25';
+
+              return (
+                <div
+                  key={entry.playerId}
+                  className="flex w-[110px] sm:w-[200px] flex-col items-center gap-2.5"
+                >
+                  <div
+                    style={{ backgroundColor: av.color }}
+                    className="grid h-16 w-16 place-items-center rounded-full border-4 border-[#0b1020] text-[22px] font-extrabold text-[#0b1020] shadow-lg"
+                  >
+                    {av.badge}
                   </div>
-                  <div className="flex flex-wrap items-center justify-end gap-2.5 shrink-0 ml-auto">
-                    {showBetting && (
-                      <div className="flex items-center gap-1.5">
-                        <span
-                          aria-label="Final chip stack"
-                          className="flex items-center gap-1.5 rounded-xl border border-amber-400/25 bg-amber-500/10 px-2.5 py-1 text-xs font-bold tabular-nums text-amber-200"
-                        >
-                          <Coins className="h-3.5 w-3.5 text-amber-400" />
-                          <span>{formatChipStack(entry.chips)} chips</span>
-                        </span>
-                        <span
-                          title="Net chips"
-                          aria-label="Net chips"
-                          className={`rounded-lg border px-2 py-1 text-xs font-bold tabular-nums ${net.badgeCls}`}
-                        >
-                          {net.label}
-                        </span>
-                      </div>
-                    )}
-                    <div className="flex items-center gap-1.5 text-lg font-extrabold text-emerald-400">
-                      <Trophy className="h-4 w-4 text-amber-400" />
-                      <span>{entry.totalScore.toLocaleString()}</span>
-                    </div>
+                  <b className="truncate max-w-full text-[16px] sm:text-[17px] font-bold text-white">
+                    {av.displayName}
+                  </b>
+                  <span className="text-[14px] text-[#8d97ae]">
+                    {entry.totalScore.toLocaleString()} pts
+                    {showBetting && isFiniteNum(entry.chips)
+                      ? ` · ${formatChipStack(entry.chips)}c`
+                      : ''}
+                  </span>
+                  <div
+                    style={{ height: `${stepHeight}px`, background: stepBg }}
+                    className="grid w-full place-items-center rounded-t-[14px] text-[34px] font-extrabold text-white shadow-xl"
+                  >
+                    {entry.rank}
                   </div>
                 </div>
+              );
+            })}
+          </div>
+        )}
 
-                {entry.roundScores.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {entry.roundScores.map((rs) => (
-                      <div
-                        key={rs.roundNumber}
-                        className="rounded-lg border border-white/5 bg-slate-900 px-2.5 py-1 text-[11px] text-slate-300"
-                      >
-                        <span className="text-slate-500">
-                          R{rs.roundNumber}:
-                        </span>{' '}
-                        <span className="font-bold text-slate-100">
-                          {rs.score}
-                        </span>
-                        {rs.distanceKm !== null && (
-                          <span className="text-slate-400">
-                            {' '}
-                            ({Math.round(rs.distanceKm)} km)
-                          </span>
-                        )}
-                      </div>
-                    ))}
+        {/* 4th+ Place List */}
+        {rest.length > 0 && (
+          <div className="geo-card mx-auto mb-6 max-w-[560px] divide-y divide-white/[0.08] px-5 py-2 text-left">
+            {rest.map((entry) => {
+              const isSelf =
+                !isSpectator &&
+                ((selfPlayerId && entry.playerId === selfPlayerId) ||
+                  (!selfPlayerId && entry.isHuman));
+              const av = getEntryAvatar(entry, isSelf);
+              return (
+                <div
+                  key={entry.playerId}
+                  className="flex items-center gap-3 py-2.5"
+                >
+                  <span className="w-5 text-sm font-semibold text-[#8d97ae]">
+                    {entry.rank}
+                  </span>
+                  <div
+                    style={{ backgroundColor: av.color }}
+                    className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full text-[11px] font-extrabold text-[#0b1020]"
+                  >
+                    {av.badge}
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                  <b className="flex-1 truncate text-[15px] text-white">
+                    {av.displayName}
+                  </b>
+                  <span className="text-sm text-[#8d97ae]">
+                    {entry.totalScore.toLocaleString()} pts
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
-        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-white/10 bg-slate-950/60 p-4">
+        {/* Action Buttons */}
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={onPlayAgain}
+            className="inline-flex items-center gap-2 rounded-[14px] bg-[#22c55e] px-7 py-4 text-[17px] font-bold text-[#052e14] shadow-[0_8px_24px_rgba(34,197,94,0.25)] hover:bg-[#34d369] transition"
+          >
+            <RotateCcw className="h-4 w-4" />
+            <span>Play again</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenSetup}
+            className="inline-flex items-center gap-2 rounded-[14px] border border-white/15 bg-[#18223a] px-6 py-4 text-[16px] font-bold text-[#eef1f8] hover:bg-[#223050] transition"
+          >
+            <span>Change settings</span>
+          </button>
+
           {onReturnHome && (
             <button
               type="button"
               onClick={onReturnHome}
-              className="sm:mr-auto flex items-center gap-2 rounded-xl border border-white/10 bg-slate-800/80 px-4 py-2.5 text-xs font-semibold text-slate-200 hover:bg-slate-700 transition"
+              className="inline-flex items-center gap-2 rounded-[14px] border border-white/15 bg-transparent px-6 py-4 text-[16px] font-bold text-[#8d97ae] hover:text-white transition"
             >
-              <Home className="h-4 w-4 text-sky-400" />
-              <span>Return to Home</span>
+              <span>Home</span>
             </button>
           )}
-          <button
-            type="button"
-            onClick={onOpenSetup}
-            className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-800 px-4 py-2.5 text-xs font-semibold text-slate-200 hover:bg-slate-700 transition"
-          >
-            <Settings2 className="h-4 w-4" />
-            <span>Configure Match</span>
-          </button>
-          <button
-            type="button"
-            onClick={onPlayAgain}
-            className="flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400 transition"
-          >
-            <RotateCcw className="h-4 w-4" />
-            <span>Play Again</span>
-          </button>
         </div>
+
+        {/* Optional Collapsible Round-by-Round Breakdown */}
+        {entries.some((e) => e.roundScores.length > 0) && (
+          <div className="mt-8">
+            <button
+              type="button"
+              onClick={() => setShowBreakdown((v) => !v)}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-[#8d97ae] hover:text-white transition"
+            >
+              <span>Round-by-round breakdown</span>
+              {showBreakdown ? (
+                <ChevronUp className="h-4 w-4" />
+              ) : (
+                <ChevronDown className="h-4 w-4" />
+              )}
+            </button>
+
+            {showBreakdown && (
+              <div className="geo-card mx-auto mt-3 max-w-[720px] divide-y divide-white/[0.08] p-4 text-left">
+                {entries.map((entry) => {
+                  const isSelf =
+                    !isSpectator &&
+                    ((selfPlayerId && entry.playerId === selfPlayerId) ||
+                      (!selfPlayerId && entry.isHuman));
+                  const av = getEntryAvatar(entry, isSelf);
+                  const net = formatNetChips(entry.netChips);
+                  return (
+                    <div key={entry.playerId} className="py-3 first:pt-0 last:pb-0">
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-[#8d97ae]">
+                            #{entry.rank}
+                          </span>
+                          <span className="font-bold text-white">
+                            {av.displayName}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-[#8d97ae]">
+                          {showBetting && (
+                            <span
+                              className={`rounded-md border px-1.5 py-0.5 font-mono font-bold ${net.badgeCls}`}
+                            >
+                              {net.label} chips
+                            </span>
+                          )}
+                          <span>
+                            Avg {entry.averageScore.toLocaleString()} · Best{' '}
+                            {entry.bestRoundScore.toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {entry.roundScores.map((rs) => (
+                          <span
+                            key={rs.roundNumber}
+                            className="rounded-lg border border-white/10 bg-[#0b1020] px-2.5 py-1 text-xs text-[#eef1f8]"
+                          >
+                            <span className="text-[#8d97ae]">
+                              R{rs.roundNumber}:
+                            </span>{' '}
+                            <b>{rs.score.toLocaleString()}</b>
+                            {rs.distanceKm !== null && (
+                              <span className="text-[#8d97ae]">
+                                {' '}
+                                ({Math.round(rs.distanceKm)} km)
+                              </span>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

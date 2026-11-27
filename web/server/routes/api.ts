@@ -83,6 +83,7 @@ const AgyConfigSchema = z.object({
   selectedModels: z.array(z.string().min(1)).optional(),
   maxStepsPerRound: z.number().int().min(2).max(20).optional(),
   timeoutSec: z.number().int().min(30).max(300).optional(),
+  roomCode: z.string().trim().min(1).max(24).optional(),
 });
 
 const AgyTriggerSchema = z.object({
@@ -268,22 +269,6 @@ export function createApiRouter(
         autoStart: parsed.autoStart ?? true,
       });
 
-      if (
-        agyRunner &&
-        (parsed.selectedModels !== undefined ||
-          parsed.maxStepsPerRound !== undefined ||
-          parsed.timeoutSec !== undefined ||
-          parsed.autoPlayEnabled !== undefined)
-      ) {
-        const allowAi = state.mode !== 'solo' && state.mode !== 'pvp';
-        agyRunner.updateConfig({
-          autoPlayEnabled: allowAi ? parsed.autoPlayEnabled : false,
-          selectedModels: parsed.selectedModels,
-          maxStepsPerRound: parsed.maxStepsPerRound,
-          timeoutSec: parsed.timeoutSec,
-        });
-      }
-
       res.json(engine.getPublicState(state.roomCode, ctx.playerId));
     } catch (err) {
       handleError(res, err);
@@ -318,23 +303,6 @@ export function createApiRouter(
         tokenVerified: ctx.tokenVerified,
         autoStart: parsed.autoStart ?? false,
       });
-
-      if (
-        agyRunner &&
-        (parsed.selectedModels !== undefined ||
-          parsed.maxStepsPerRound !== undefined ||
-          parsed.timeoutSec !== undefined ||
-          parsed.autoPlayEnabled !== undefined)
-      ) {
-        const allowAi =
-          created.state.mode !== 'solo' && created.state.mode !== 'pvp';
-        agyRunner.updateConfig({
-          autoPlayEnabled: allowAi ? parsed.autoPlayEnabled : false,
-          selectedModels: parsed.selectedModels,
-          maxStepsPerRound: parsed.maxStepsPerRound,
-          timeoutSec: parsed.timeoutSec,
-        });
-      }
 
       res.json({
         roomCode: created.roomCode,
@@ -667,12 +635,13 @@ export function createApiRouter(
   );
 
   // Autonomous Antigravity CLI (agy) Runner endpoints
-  router.get('/agy/status', (_req: Request, res: Response) => {
+  router.get('/agy/status', (req: Request, res: Response) => {
     if (!agyRunner) {
       res.status(501).json({ error: 'AgyRunner is not initialized' });
       return;
     }
-    res.json(agyRunner.getStatus());
+    const ctx = extractContext(req);
+    res.json(agyRunner.getStatus(ctx.roomCode));
   });
 
   router.post('/agy/config', (req: Request, res: Response) => {
@@ -682,7 +651,16 @@ export function createApiRouter(
         return;
       }
       const parsed = AgyConfigSchema.parse(req.body ?? {});
-      res.json(agyRunner.updateConfig(parsed));
+      const ctx = extractContext(req, parsed);
+      if (parsed.selectedModels && parsed.selectedModels.length > 0) {
+        engine.enableAiInLobbyRoom(ctx.roomCode);
+      }
+      res.json(
+        agyRunner.updateConfig({
+          ...parsed,
+          roomCode: ctx.roomCode,
+        })
+      );
     } catch (err) {
       handleError(res, err);
     }
@@ -702,12 +680,15 @@ export function createApiRouter(
     }
   });
 
-  router.post('/agy/stop', (_req: Request, res: Response) => {
+  router.post('/agy/stop', (req: Request, res: Response) => {
     if (!agyRunner) {
       res.status(501).json({ error: 'AgyRunner is not initialized' });
       return;
     }
-    res.json(agyRunner.stopAllActiveRuns('Stopped by player'));
+    const bodyRoom =
+      typeof req.body?.roomCode === 'string' ? req.body.roomCode : undefined;
+    const ctx = extractContext(req, { roomCode: bodyRoom });
+    res.json(agyRunner.stopAllActiveRuns('Stopped by player', true, ctx.roomCode));
   });
 
   return router;

@@ -1,12 +1,14 @@
 import { useState } from 'react';
-import { Coins, Globe2, Play, Users, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Coins, Globe2, Play, Users, X } from 'lucide-react';
 import type {
+  AgyRunnerStatus,
   GameMode,
   HealthInfo,
   LocationMode,
   PanoramaProviderChoice,
 } from '@geoguessr-mcp/shared';
 import type { StartMatchPayload } from '../lib/api';
+import { FALLBACK_AGY_MODELS, getModelUiMeta, LOCATION_META } from '../lib/uiHelpers';
 
 interface LobbyModalProps {
   initialMode: GameMode;
@@ -16,6 +18,7 @@ interface LobbyModalProps {
   initialDuration: number | null;
   initialProvider: PanoramaProviderChoice;
   initialHumanName: string;
+  agyRunner?: AgyRunnerStatus;
   health: HealthInfo | null;
   starting: boolean;
   onStart: (opts: StartMatchPayload) => void;
@@ -30,13 +33,16 @@ export function LobbyModal({
   initialDuration,
   initialProvider,
   initialHumanName,
+  agyRunner,
   health,
   starting,
   onStart,
   onClose,
 }: LobbyModalProps) {
   const [humanName, setHumanName] = useState(
-    initialHumanName || 'You (Player)'
+    initialHumanName && initialHumanName !== 'You (Player)'
+      ? initialHumanName
+      : 'You'
   );
   const [mode, setMode] = useState<GameMode>(initialMode);
   const [locationMode, setLocationMode] =
@@ -50,68 +56,98 @@ export function LobbyModal({
   );
   const [provider, setProvider] =
     useState<PanoramaProviderChoice>(initialProvider);
+  const [maxStepsPerRound, setMaxStepsPerRound] = useState<number>(
+    agyRunner?.maxStepsPerRound ?? 5
+  );
+  const [selectedModels, setSelectedModels] = useState<string[]>(
+    agyRunner?.selectedModels && agyRunner.selectedModels.length > 0
+      ? agyRunner.selectedModels
+      : ['gemini-4-hydrogen-medium', 'claude-sonnet-5-5-medium']
+  );
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
+  const availableModels =
+    agyRunner?.availableModels && agyRunner.availableModels.length > 0
+      ? agyRunner.availableModels
+      : FALLBACK_AGY_MODELS;
+
+  const allowsAi =
+    mode === '1v1' ||
+    mode === 'ffa' ||
+    mode === 'pvp_ai' ||
+    mode === 'spectator';
+
+  const toggleModel = (modelId: string) => {
+    setSelectedModels((prev) => {
+      if (mode === '1v1') return [modelId];
+      if (prev.includes(modelId)) {
+        return prev.length > 1 ? prev.filter((id) => id !== modelId) : prev;
+      }
+      return [...prev, modelId];
+    });
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md">
-      <div className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-white/15 bg-slate-900 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0b1020]/80 p-4 backdrop-blur-md">
+      <div className="flex max-h-[90dvh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-white/15 bg-[#121a2e] text-[#eef1f8] shadow-2xl">
         <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-5 py-4">
           <div className="flex items-center gap-2.5">
-            <Globe2 className="h-5 w-5 text-sky-400" />
-            <h2 className="text-base font-bold text-slate-100">Match Setup</h2>
+            <Globe2 className="h-5 w-5 text-[#22c55e]" />
+            <h2 className="text-base font-bold">Change settings</h2>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+            className="rounded-lg p-1.5 text-[#8d97ae] hover:bg-[#18223a] hover:text-white transition"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 p-5 text-xs">
+        <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 p-5 text-sm">
           <div>
-            <label className="mb-1.5 block font-semibold text-slate-300">
-              Your Display Name
+            <label className="mb-1.5 block font-semibold text-[#eef1f8]">
+              Your name
             </label>
             <input
               type="text"
               value={humanName}
               onChange={(e) => setHumanName(e.target.value)}
               maxLength={40}
-              className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-sky-400 focus:outline-none"
+              className="w-full rounded-xl border border-white/15 bg-[#0b1020] px-3.5 py-2.5 text-sm text-white focus:border-[#22c55e] focus:outline-none"
             />
           </div>
 
           <div>
-            <label className="mb-1.5 block font-semibold text-slate-300">
-              Game Mode
+            <label className="mb-1.5 block font-semibold text-[#eef1f8]">
+              Game mode
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {(
                 [
-                  { id: 'ffa', label: 'Free-For-All', desc: 'Multi-MCP AI' },
-                  { id: '1v1', label: '1v1 Duel', desc: 'Single AI' },
-                  { id: 'pvp_ai', label: 'PvPvAI', desc: 'Humans + AI' },
-                  { id: 'pvp', label: 'PvP', desc: 'Humans Only' },
+                  { id: 'ffa', label: 'vs All AI', desc: 'Multiple models' },
+                  { id: '1v1', label: '1 vs 1 AI', desc: 'Single model' },
+                  { id: 'pvp_ai', label: 'Friends + AI', desc: 'Room + AI' },
+                  { id: 'pvp', label: 'Friends only', desc: 'Room' },
                   { id: 'solo', label: 'Solo', desc: 'Practice' },
-                  { id: 'spectator', label: 'Spectator', desc: 'AI Only' },
+                  { id: 'spectator', label: 'Watch AIs', desc: 'AI only' },
                 ] as const
               ).map((opt) => (
                 <button
                   key={opt.id}
                   type="button"
                   onClick={() => setMode(opt.id)}
-                  className={`rounded-xl border p-2 text-left transition ${
+                  className={`rounded-xl border p-2.5 text-left transition ${
                     mode === opt.id
-                      ? 'border-sky-400 bg-sky-500/20 text-slate-100'
-                      : 'border-white/10 bg-slate-950/60 text-slate-400 hover:text-slate-200'
+                      ? 'border-[#22c55e] bg-[#22c55e]/10 text-white'
+                      : 'border-white/10 bg-[#0b1020]/60 text-[#8d97ae] hover:text-white'
                   }`}
                 >
-                  <div className="flex items-center gap-1.5 font-bold">
-                    <Users className="h-3.5 w-3.5 text-sky-400" />
+                  <div className="flex items-center gap-1.5 font-bold text-xs">
+                    <Users className="h-3.5 w-3.5 text-[#22c55e]" />
                     <span>{opt.label}</span>
                   </div>
-                  <div className="mt-0.5 text-[10px] text-slate-400">
+                  <div className="mt-0.5 text-[11px] text-[#8d97ae]">
                     {opt.desc}
                   </div>
                 </button>
@@ -119,49 +155,91 @@ export function LobbyModal({
             </div>
           </div>
 
+          {allowsAi && (
+            <div>
+              <label className="mb-1.5 block font-semibold text-[#eef1f8]">
+                AI opponents
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {availableModels.map((m) => {
+                  const meta = getModelUiMeta(m.id, m.family, m.label);
+                  const active = (
+                    mode === '1v1' ? selectedModels.slice(0, 1) : selectedModels
+                  ).includes(m.id);
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => toggleModel(m.id)}
+                      className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold transition ${
+                        active
+                          ? 'border-[#22c55e] bg-[#22c55e]/10 text-white'
+                          : 'border-white/10 bg-[#0b1020] text-[#8d97ae] hover:text-white'
+                      }`}
+                    >
+                      <span
+                        style={{ backgroundColor: meta.color }}
+                        className="grid h-5 w-5 place-items-center rounded-full text-[10px] font-extrabold text-[#0b1020]"
+                      >
+                        {meta.badge}
+                      </span>
+                      <span>{meta.shortName}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="mb-1.5 block font-semibold text-slate-300">
-                Location Gamemode
+              <label className="mb-1.5 block font-semibold text-[#eef1f8]">
+                Map
               </label>
               <select
                 value={locationMode}
                 onChange={(e) =>
                   setLocationMode(e.target.value as LocationMode)
                 }
-                className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-slate-100 focus:border-sky-400 focus:outline-none"
+                className="w-full rounded-xl border border-white/15 bg-[#0b1020] px-3 py-2.5 text-sm text-white focus:border-[#22c55e] focus:outline-none"
               >
-                <option value="standard">Standard (All regions)</option>
-                <option value="big_cities">Big Cities Only</option>
-                <option value="mountain_regions">Mountain Regions Only</option>
+                <option value="standard">
+                  {LOCATION_META.standard.emoji} Whole world
+                </option>
+                <option value="big_cities">
+                  {LOCATION_META.big_cities.emoji} Big cities
+                </option>
+                <option value="mountain_regions">
+                  {LOCATION_META.mountain_regions.emoji} Mountains
+                </option>
               </select>
             </div>
 
             <div>
-              <label className="mb-1.5 block font-semibold text-slate-300">
-                Confidence Betting
+              <label className="mb-1.5 block font-semibold text-[#eef1f8]">
+                Betting
               </label>
               <button
                 type="button"
                 onClick={() => setBettingEnabled((v) => !v)}
-                className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 font-bold transition ${
+                className={`flex w-full items-center justify-between rounded-xl border px-3.5 py-2.5 text-sm font-bold transition ${
                   bettingEnabled
-                    ? 'border-amber-400 bg-amber-500/20 text-amber-200'
-                    : 'border-white/10 bg-slate-950 text-slate-400'
+                    ? 'border-[#22c55e] bg-[#22c55e]/10 text-white'
+                    : 'border-white/15 bg-[#0b1020] text-[#8d97ae]'
                 }`}
               >
                 <span className="flex items-center gap-1.5">
-                  <Coins className="h-3.5 w-3.5 text-amber-400" />
+                  <Coins className="h-4 w-4 text-[#fbbf24]" />
                   <span>{bettingEnabled ? 'Betting ON' : 'Betting OFF'}</span>
                 </span>
-                <span>1,000</span>
+                <span className="text-xs text-[#8d97ae]">1,000</span>
               </button>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="mb-1.5 block font-semibold text-slate-300">
+              <label className="mb-1.5 block font-semibold text-[#eef1f8]">
                 Rounds
               </label>
               <div className="flex gap-1.5">
@@ -170,10 +248,10 @@ export function LobbyModal({
                     key={r}
                     type="button"
                     onClick={() => setTotalRounds(r)}
-                    className={`flex-1 rounded-xl border py-2 font-bold transition ${
+                    className={`flex-1 rounded-xl border py-2 text-sm font-bold transition ${
                       totalRounds === r
-                        ? 'border-sky-400 bg-sky-500/20 text-slate-100'
-                        : 'border-white/10 bg-slate-950/60 text-slate-400 hover:text-slate-200'
+                        ? 'border-[#22c55e] bg-[#22c55e]/10 text-white'
+                        : 'border-white/10 bg-[#0b1020] text-[#8d97ae] hover:text-white'
                     }`}
                   >
                     {r}
@@ -183,8 +261,8 @@ export function LobbyModal({
             </div>
 
             <div>
-              <label className="mb-1.5 block font-semibold text-slate-300">
-                Round Timer
+              <label className="mb-1.5 block font-semibold text-[#eef1f8]">
+                Time per round
               </label>
               <select
                 value={
@@ -195,63 +273,99 @@ export function LobbyModal({
                     e.target.value === 'none' ? null : Number(e.target.value)
                   )
                 }
-                className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-slate-100 focus:border-sky-400 focus:outline-none"
+                className="w-full rounded-xl border border-white/15 bg-[#0b1020] px-3 py-2.5 text-sm text-white focus:border-[#22c55e] focus:outline-none"
               >
-                <option value="none">No Time Limit</option>
-                <option value="10">10 seconds</option>
-                <option value="60">60 seconds</option>
-                <option value="120">2 minutes</option>
-                <option value="180">3 minutes</option>
+                <option value="none">No limit</option>
+                <option value="30">30s</option>
+                <option value="60">1 min</option>
+                <option value="120">2 min</option>
+                <option value="180">3 min</option>
               </select>
             </div>
           </div>
 
-          <div>
-            <label className="mb-1.5 block font-semibold text-slate-300">
-              Street Panorama Provider
-            </label>
-            <select
-              value={provider}
-              onChange={(e) =>
-                setProvider(e.target.value as PanoramaProviderChoice)
-              }
-              className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-slate-100 focus:border-sky-400 focus:outline-none"
+          <div className="rounded-xl border border-white/10 bg-[#0b1020]/50 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setAdvancedOpen((v) => !v)}
+              className="flex w-full items-center justify-between px-4 py-2.5 text-xs font-semibold text-[#8d97ae] hover:text-white"
             >
-              <option value="auto">Auto (Best Configured)</option>
-              <option value="open">
-                Open 360° Procedural (Out-of-the-Box)
-              </option>
-              <option value="wikimedia">
-                Wikimedia Commons 360° (with fallback)
-              </option>
-              <option value="mapillary">
-                MapillaryJS{' '}
-                {health?.configuredProviders.mapillary
-                  ? '(Token Configured)'
-                  : '(Requires MAPILLARY_ACCESS_TOKEN)'}
-              </option>
-              <option value="google">
-                Google Street View{' '}
-                {health?.configuredProviders.google
-                  ? '(Key Configured)'
-                  : '(Requires GOOGLE_MAPS_API_KEY)'}
-              </option>
-            </select>
+              <span>⚙ Advanced — image source, AI move limit</span>
+              {advancedOpen ? (
+                <ChevronUp className="h-4 w-4" />
+              ) : (
+                <ChevronDown className="h-4 w-4" />
+              )}
+            </button>
+            {advancedOpen && (
+              <div className="border-t border-white/10 p-3.5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-[#8d97ae]">
+                    Image source
+                  </label>
+                  <select
+                    value={provider}
+                    onChange={(e) =>
+                      setProvider(e.target.value as PanoramaProviderChoice)
+                    }
+                    className="w-full rounded-xl border border-white/15 bg-[#0b1020] px-3 py-2 text-xs text-white focus:border-[#22c55e] focus:outline-none"
+                  >
+                    <option value="auto">Auto (Best available)</option>
+                    <option value="open">Open 360° Procedural</option>
+                    <option value="wikimedia">Wikimedia Commons 360°</option>
+                    <option value="mapillary">
+                      Mapillary 360°{' '}
+                      {health?.configuredProviders.mapillary
+                        ? '(Configured)'
+                        : '(Needs token)'}
+                    </option>
+                    <option value="google">
+                      Google Street View{' '}
+                      {health?.configuredProviders.google
+                        ? '(Configured)'
+                        : '(Needs API key)'}
+                    </option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-[#8d97ae]">
+                    AI move limit
+                  </label>
+                  <select
+                    value={String(maxStepsPerRound)}
+                    onChange={(e) =>
+                      setMaxStepsPerRound(Number(e.target.value))
+                    }
+                    className="w-full rounded-xl border border-white/15 bg-[#0b1020] px-3 py-2 text-xs text-white focus:border-[#22c55e] focus:outline-none"
+                  >
+                    <option value="3">3 moves</option>
+                    <option value="5">5 moves</option>
+                    <option value="8">8 moves</option>
+                    <option value="12">12 moves</option>
+                  </select>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-white/10 bg-slate-950/60 px-5 py-3.5">
+        <div className="flex shrink-0 items-center justify-end gap-2.5 border-t border-white/10 bg-[#0b1020]/60 px-5 py-3.5">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-white/10 px-4 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-800"
+            className="rounded-xl border border-white/15 px-4 py-2 text-sm font-semibold text-[#8d97ae] hover:text-white transition"
           >
             Cancel
           </button>
           <button
             type="button"
             disabled={starting}
-            onClick={() =>
+            onClick={() => {
+              const finalModels = allowsAi
+                ? mode === '1v1'
+                  ? selectedModels.slice(0, 1)
+                  : selectedModels
+                : [];
               onStart({
                 mode,
                 locationMode,
@@ -259,13 +373,16 @@ export function LobbyModal({
                 totalRounds,
                 roundDurationSec,
                 provider,
-                humanName: humanName.trim() || 'You (Player)',
-              })
-            }
-            className="flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2 text-xs font-bold text-slate-950 hover:bg-emerald-400 disabled:opacity-60 transition"
+                humanName: humanName.trim() || 'You',
+                maxStepsPerRound,
+                selectedModels: finalModels,
+                autoPlayEnabled: allowsAi && finalModels.length > 0,
+              });
+            }}
+            className="flex items-center gap-2 rounded-xl bg-[#22c55e] px-5 py-2 text-sm font-bold text-[#052e14] shadow-[0_8px_24px_rgba(34,197,94,0.25)] hover:bg-[#34d369] disabled:opacity-60 transition"
           >
             <Play className="h-3.5 w-3.5 fill-current" />
-            <span>{starting ? 'Starting...' : 'Start New Match'}</span>
+            <span>{starting ? 'Starting…' : 'Start new match'}</span>
           </button>
         </div>
       </div>

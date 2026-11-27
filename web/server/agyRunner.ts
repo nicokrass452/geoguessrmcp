@@ -6,19 +6,25 @@ import type {
   AgyBotRunState,
   AgyModelOption,
   AgyRunnerStatus,
+  MatchStatus,
 } from '@geoguessr-mcp/shared';
 import type { ServerConfig } from './config.js';
 import type { GameEngine } from './gameEngine.js';
 
 export const AVAILABLE_AGY_MODELS: AgyModelOption[] = [
-  { id: 'gemini-3.8-flash-medium', label: 'Gemini 3.8 Flash', family: 'gemini' },
   { id: 'gemini-4-hydrogen-medium', label: 'Gemini 4 Hydrogen', family: 'gemini' },
-  { id: 'gemini-4-neon-high', label: 'Gemini 4 Neon', family: 'gemini' },
-  { id: 'gemini-4-argon-high', label: 'Gemini 4 Argon', family: 'gemini' },
   { id: 'claude-sonnet-5-5-medium', label: 'Claude Sonnet 5.5', family: 'claude' },
+  { id: 'gemini-4-carbon-high', label: 'Gemini 4 Carbon', family: 'gemini' },
+  { id: 'gemini-4-neon-high', label: 'Gemini 4 Neon', family: 'gemini' },
   { id: 'claude-opus-5-5-high', label: 'Claude Opus 5.5', family: 'claude' },
-  { id: 'gpt-oss-120b-medium', label: 'GPT-OSS 120B', family: 'gpt' },
 ];
+
+interface AgyRoomConfig {
+  autoPlayEnabled: boolean;
+  selectedModels: string[];
+  maxStepsPerRound: number;
+  timeoutSec: number;
+}
 
 interface ActiveProcessEntry {
   child: ChildProcess;
@@ -83,14 +89,14 @@ export class AgyRunner {
   private readonly sandboxDir: string;
   private readonly logsDir: string;
 
-  private autoPlayEnabled = false;
-  private selectedModels: string[] = [
-    'gemini-3.8-flash-medium',
+  private defaultSelectedModels: string[] = [
+    'gemini-4-hydrogen-medium',
     'claude-sonnet-5-5-medium',
   ];
-  private maxStepsPerRound = 5;
-  private timeoutSec = 120;
+  private defaultMaxStepsPerRound = 5;
+  private defaultTimeoutSec = 120;
 
+  private readonly roomConfigs = new Map<string, AgyRoomConfig>();
   private readonly activeProcs = new Map<string, ActiveProcessEntry>();
   private readonly runStates = new Map<string, AgyBotRunState>();
   private readonly roomRoundState = new Map<
@@ -109,23 +115,60 @@ export class AgyRunner {
     fs.mkdirSync(this.logsDir, { recursive: true });
   }
 
-  public getStatus(): AgyRunnerStatus {
-    const runs = Array.from(this.runStates.values()).map((r) => {
-      const info = this.engine.getAgentInfo(r.agentId);
-      return {
-        ...r,
-        explorationCalls: info?.explorationCalls ?? r.explorationCalls,
-        maxStepsPerRound: this.maxStepsPerRound,
+  private sanitizeModels(models?: string[]): string[] {
+    if (!Array.isArray(models)) return [...this.defaultSelectedModels];
+    const validSet = new Set(AVAILABLE_AGY_MODELS.map((m) => m.id));
+    return Array.from(new Set(models.filter((m) => validSet.has(m))));
+  }
+
+  private clampSteps(steps: number): number {
+    return Math.max(2, Math.min(20, Math.round(steps)));
+  }
+
+  private clampTimeout(sec: number): number {
+    return Math.max(30, Math.min(300, Math.round(sec)));
+  }
+
+  private getRoomConfig(roomCode?: string): AgyRoomConfig {
+    const code = this.resolveRoomCode(roomCode);
+    let cfg = this.roomConfigs.get(code);
+    if (!cfg) {
+      cfg = {
+        autoPlayEnabled: false,
+        selectedModels: [...this.defaultSelectedModels],
+        maxStepsPerRound: this.defaultMaxStepsPerRound,
+        timeoutSec: this.defaultTimeoutSec,
       };
-    });
+      this.roomConfigs.set(code, cfg);
+    }
+    return cfg;
+  }
+
+  private isAgentInRoom(agentId: string, modelId: string, roomCode: string): boolean {
+    return agentId === modelIdToAgentId(modelId, roomCode);
+  }
+
+  public getStatus(roomCode?: string): AgyRunnerStatus {
+    const targetRoom = this.resolveRoomCode(roomCode);
+    const cfg = this.getRoomConfig(targetRoom);
+    const runs = Array.from(this.runStates.values())
+      .filter((r) => this.isAgentInRoom(r.agentId, r.modelId, targetRoom))
+      .map((r) => {
+        const info = this.engine.getAgentInfo(r.agentId);
+        return {
+          ...r,
+          explorationCalls: info?.explorationCalls ?? r.explorationCalls,
+          maxStepsPerRound: cfg.maxStepsPerRound,
+        };
+      });
 
     return {
       available: Boolean(this.agyPath),
       agyPath: this.agyPath,
-      autoPlayEnabled: this.autoPlayEnabled,
-      selectedModels: [...this.selectedModels],
-      maxStepsPerRound: this.maxStepsPerRound,
-      timeoutSec: this.timeoutSec,
+      autoPlayEnabled: cfg.autoPlayEnabled,
+      selectedModels: [...cfg.selectedModels],
+      maxStepsPerRound: cfg.maxStepsPerRound,
+      timeoutSec: cfg.timeoutSec,
       availableModels: AVAILABLE_AGY_MODELS,
       runs,
     };
@@ -144,15 +187,96 @@ export class AgyRunner {
     const code = this.resolveRoomCode(roomCode);
     let st = this.roomRoundState.get(code);
     if (!st) {
-      st = { roundNumber: 1, active: true };
+      st = { roundNumber: 1, active: false };
       this.roomRoundState.set(code, st);
     }
     return st;
   }
 
+  public onRoomConfigured(
+    roomCode: string,
+    opts: {
+      allowAi: boolean;
+      matchStatus: MatchStatus;
+      autoPlayEnabled?: boolean;
+      selectedModels?: string[];
+      maxStepsPerRound?: number;
+      timeoutSec?: number;
+    }
+  ): void {
+    const targetRoom = this.resolveRoomCode(roomCode);
+    this.activeRoomCode = targetRoom;
+    this.roomRoundState.set(targetRoom, { roundNumber: 1, active: false });
+
+    const existingCfg = this.roomConfigs.get(targetRoom);
+    const selectedModels = Array.isArray(opts.selectedModels)
+      ? this.sanitizeModels(opts.selectedModels)
+      : existingCfg
+        ? [...existingCfg.selectedModels]
+        : [...this.defaultSelectedModels];
+
+    if (opts.allowAi && Array.isArray(opts.selectedModels) && selectedModels.length > 0) {
+      this.defaultSelectedModels = [...selectedModels];
+    }
+
+    const maxStepsPerRound =
+      typeof opts.maxStepsPerRound === 'number'
+        ? this.clampSteps(opts.maxStepsPerRound)
+        : existingCfg?.maxStepsPerRound ?? this.defaultMaxStepsPerRound;
+    if (typeof opts.maxStepsPerRound === 'number') {
+      this.defaultMaxStepsPerRound = maxStepsPerRound;
+    }
+
+    const timeoutSec =
+      typeof opts.timeoutSec === 'number'
+        ? this.clampTimeout(opts.timeoutSec)
+        : existingCfg?.timeoutSec ?? this.defaultTimeoutSec;
+    if (typeof opts.timeoutSec === 'number') {
+      this.defaultTimeoutSec = timeoutSec;
+    }
+
+    const autoPlayEnabled = opts.allowAi
+      ? typeof opts.autoPlayEnabled === 'boolean'
+        ? opts.autoPlayEnabled
+        : existingCfg?.autoPlayEnabled ?? false
+      : false;
+
+    this.roomConfigs.set(targetRoom, {
+      autoPlayEnabled,
+      selectedModels,
+      maxStepsPerRound,
+      timeoutSec,
+    });
+
+    if (
+      opts.allowAi &&
+      this.agyPath &&
+      selectedModels.length > 0 &&
+      (opts.matchStatus === 'lobby' || autoPlayEnabled)
+    ) {
+      for (const modelId of selectedModels) {
+        const opt = AVAILABLE_AGY_MODELS.find((m) => m.id === modelId);
+        if (!opt) continue;
+        this.engine.registerManagedAgent({
+          agentId: modelIdToAgentId(opt.id, targetRoom),
+          name: opt.label,
+          model: opt.id,
+          maxExplorationCalls: maxStepsPerRound,
+          roomCode: targetRoom,
+        });
+      }
+    }
+  }
+
   public onMatchReset(roomCode?: string): void {
     const targetRoom = this.resolveRoomCode(roomCode);
     this.stopRoomRuns(targetRoom, 'Match restarted', false);
+    this.roomRoundState.set(targetRoom, { roundNumber: 1, active: false });
+    for (const [agentId, st] of Array.from(this.runStates.entries())) {
+      if (this.isAgentInRoom(agentId, st.modelId, targetRoom)) {
+        this.runStates.delete(agentId);
+      }
+    }
   }
 
   public onRoundStarted(roundNumber: number, roomCode?: string): void {
@@ -161,7 +285,8 @@ export class AgyRunner {
     this.stopRoomRuns(targetRoom, 'Round transitioned', false);
     this.roomRoundState.set(targetRoom, { roundNumber, active: true });
 
-    for (const modelId of this.selectedModels) {
+    const cfg = this.getRoomConfig(targetRoom);
+    for (const modelId of cfg.selectedModels) {
       const agentId = modelIdToAgentId(modelId, targetRoom);
       const state = this.runStates.get(agentId);
       if (state) {
@@ -170,11 +295,11 @@ export class AgyRunner {
         state.lastMessage = undefined;
         state.roundNumber = roundNumber;
         state.explorationCalls = 0;
-        state.maxStepsPerRound = this.maxStepsPerRound;
+        state.maxStepsPerRound = cfg.maxStepsPerRound;
       }
     }
 
-    if (this.autoPlayEnabled) {
+    if (cfg.autoPlayEnabled && cfg.selectedModels.length > 0 && this.agyPath) {
       this.triggerCurrentRound(undefined, targetRoom);
     }
   }
@@ -191,64 +316,73 @@ export class AgyRunner {
     selectedModels?: string[];
     maxStepsPerRound?: number;
     timeoutSec?: number;
+    roomCode?: string;
   }): AgyRunnerStatus {
-    const prevAuto = this.autoPlayEnabled;
+    const targetRoom = this.resolveRoomCode(opts.roomCode);
+    const cfg = this.getRoomConfig(targetRoom);
+    const prevAuto = cfg.autoPlayEnabled;
+
     if (typeof opts.autoPlayEnabled === 'boolean') {
-      this.autoPlayEnabled = opts.autoPlayEnabled;
+      cfg.autoPlayEnabled = opts.autoPlayEnabled;
     }
     if (typeof opts.maxStepsPerRound === 'number') {
-      this.maxStepsPerRound = Math.max(
-        2,
-        Math.min(20, Math.round(opts.maxStepsPerRound))
-      );
+      cfg.maxStepsPerRound = this.clampSteps(opts.maxStepsPerRound);
+      this.defaultMaxStepsPerRound = cfg.maxStepsPerRound;
     }
     if (typeof opts.timeoutSec === 'number') {
-      this.timeoutSec = Math.max(30, Math.min(300, Math.round(opts.timeoutSec)));
+      cfg.timeoutSec = this.clampTimeout(opts.timeoutSec);
+      this.defaultTimeoutSec = cfg.timeoutSec;
     }
 
     if (Array.isArray(opts.selectedModels)) {
-      const validSet = new Set(AVAILABLE_AGY_MODELS.map((m) => m.id));
-      const nextModels = Array.from(
-        new Set(opts.selectedModels.filter((m) => validSet.has(m)))
-      );
-      const removed = this.selectedModels.filter((m) => !nextModels.includes(m));
+      const nextModels = this.sanitizeModels(opts.selectedModels);
+      const removed = cfg.selectedModels.filter((m) => !nextModels.includes(m));
       for (const oldModelId of removed) {
-        const prefix = `${modelIdToAgentId(oldModelId)}`;
-        for (const agentId of Array.from(
-          new Set([prefix, ...this.activeProcs.keys(), ...this.runStates.keys()])
-        )) {
-          if (agentId === prefix || agentId.startsWith(`${prefix}_`)) {
-            this.stopSingleRun(agentId, 'Deselected by player');
-            this.runStates.delete(agentId);
-            this.engine.removeManagedAgent(agentId);
-          }
-        }
+        const agentId = modelIdToAgentId(oldModelId, targetRoom);
+        this.stopSingleRun(agentId, 'Deselected by player');
+        this.runStates.delete(agentId);
+        this.engine.removeManagedAgent(agentId);
       }
-      this.selectedModels = nextModels;
+      cfg.selectedModels = nextModels;
+      if (nextModels.length > 0) {
+        this.defaultSelectedModels = [...nextModels];
+      }
     }
 
-    // Ensure selected models are visible/updated in GameEngine when auto-play is enabled
-    const targetRoom = this.activeRoomCode;
     const roomState = this.getRoomRoundState(targetRoom);
-    if (this.autoPlayEnabled) {
-      for (const modelId of this.selectedModels) {
-        const opt = AVAILABLE_AGY_MODELS.find((m) => m.id === modelId);
-        if (!opt) continue;
-        this.engine.registerManagedAgent({
-          agentId: modelIdToAgentId(opt.id, targetRoom),
-          name: opt.label,
-          model: opt.id,
-          maxExplorationCalls: this.maxStepsPerRound,
-          roomCode: targetRoom,
-        });
-      }
-      if (roomState.active && (!prevAuto || opts.selectedModels)) {
-        this.triggerCurrentRound(undefined, targetRoom);
+    if (this.agyPath && cfg.selectedModels.length > 0) {
+      if (roomState.active && cfg.autoPlayEnabled) {
+        for (const modelId of cfg.selectedModels) {
+          const opt = AVAILABLE_AGY_MODELS.find((m) => m.id === modelId);
+          if (!opt) continue;
+          this.engine.registerManagedAgent({
+            agentId: modelIdToAgentId(opt.id, targetRoom),
+            name: opt.label,
+            model: opt.id,
+            maxExplorationCalls: cfg.maxStepsPerRound,
+            roomCode: targetRoom,
+          });
+        }
+        if (!prevAuto || opts.selectedModels) {
+          this.triggerCurrentRound(undefined, targetRoom);
+        }
+      } else if (!roomState.active) {
+        for (const modelId of cfg.selectedModels) {
+          const opt = AVAILABLE_AGY_MODELS.find((m) => m.id === modelId);
+          if (!opt) continue;
+          this.engine.registerManagedAgent({
+            agentId: modelIdToAgentId(opt.id, targetRoom),
+            name: opt.label,
+            model: opt.id,
+            maxExplorationCalls: cfg.maxStepsPerRound,
+            roomCode: targetRoom,
+          });
+        }
       }
     }
 
     this.engine.notifyStateChanged(targetRoom);
-    return this.getStatus();
+    return this.getStatus(targetRoom);
   }
 
   public triggerCurrentRound(
@@ -266,7 +400,14 @@ export class AgyRunner {
       throw new Error('Cannot summon AI opponents while the round is over.');
     }
 
-    const targets = (overrideModels ?? this.selectedModels)
+    const cfg = this.getRoomConfig(targetRoom);
+    if (Array.isArray(overrideModels)) {
+      cfg.selectedModels = this.sanitizeModels(overrideModels);
+    }
+    // Keep AI opponents active for subsequent rounds once summoned in this match
+    cfg.autoPlayEnabled = true;
+
+    const targets = cfg.selectedModels
       .map((id) => AVAILABLE_AGY_MODELS.find((m) => m.id === id))
       .filter((m): m is AgyModelOption => Boolean(m));
 
@@ -278,28 +419,31 @@ export class AgyRunner {
         agentId,
         name: model.label,
         model: model.id,
-        maxExplorationCalls: this.maxStepsPerRound,
+        maxExplorationCalls: cfg.maxStepsPerRound,
         roomCode: targetRoom,
       });
 
       if (registered.hasGuessed) continue;
 
-      this.spawnAgyBot(model, agentId, roomState.roundNumber, targetRoom);
+      this.spawnAgyBot(model, agentId, roomState.roundNumber, targetRoom, cfg);
     }
 
     this.engine.notifyStateChanged(targetRoom);
-    return this.getStatus();
+    return this.getStatus(targetRoom);
   }
 
   private spawnAgyBot(
     model: AgyModelOption,
     agentId: string,
     roundNumber: number,
-    roomCode: string
+    roomCode: string,
+    cfg: AgyRoomConfig
   ): void {
     if (!this.agyPath) return;
 
-    const deadlineMs = Date.now() + this.timeoutSec * 1000;
+    const maxStepsPerRound = cfg.maxStepsPerRound;
+    const timeoutSec = cfg.timeoutSec;
+    const deadlineMs = Date.now() + timeoutSec * 1000;
     this.engine.setAgentRoundDeadline(agentId, deadlineMs);
 
     const logFile = path.join(this.logsDir, `round-${roundNumber}-${agentId}.log`);
@@ -308,7 +452,7 @@ export class AgyRunner {
       logStream = fs.createWriteStream(logFile, { flags: 'a' });
       logStream.on('error', () => {});
       logStream.write(
-        `\n=== Round ${roundNumber} | ${model.label} (${model.id}) | agentId=${agentId} | maxSteps=${this.maxStepsPerRound} | timeout=${this.timeoutSec}s | ${new Date().toISOString()} ===\n`
+        `\n=== Round ${roundNumber} | ${model.label} (${model.id}) | agentId=${agentId} | maxSteps=${maxStepsPerRound} | timeout=${timeoutSec}s | ${new Date().toISOString()} ===\n`
       );
     } catch {
       logStream = undefined;
@@ -324,21 +468,21 @@ export class AgyRunner {
       roundNumber,
       startedAt: new Date().toISOString(),
       explorationCalls: 0,
-      maxStepsPerRound: this.maxStepsPerRound,
+      maxStepsPerRound,
     };
     this.runStates.set(agentId, runState);
     this.engine.logAgentActivity(
       agentId,
       'agy_spawn',
-      `Summoned fresh ${model.label} session (max ${this.maxStepsPerRound} steps, ${this.timeoutSec}s timeout)`
+      `Summoned fresh ${model.label} session (max ${maxStepsPerRound} steps, ${timeoutSec}s timeout)`
     );
 
-    const maxFollowupCalls = Math.max(1, this.maxStepsPerRound - 1);
+    const maxFollowupCalls = Math.max(1, maxStepsPerRound - 1);
     const prompt = [
       `You are "${model.label}", competing autonomously in Round ${roundNumber} of GeoGuessr MCP Arena.`,
       `CRITICAL IDENTITY RULE: On EVERY call to the geoguessr-arena MCP server (get_game_state, look_around, pan_and_zoom, move, return_to_start, submit_guess), you MUST pass agent_id: "${agentId}".`,
       `FAIR PLAY RULE: Rely ONLY on the street-view images and compass metadata returned by geoguessr-arena MCP tools. Do NOT run shell commands, read local workspace files, or search outside tools.`,
-      `STRICT BUDGET & PACING: You have a hard cap of ${this.maxStepsPerRound} exploration calls (look_around / pan_and_zoom / move combined) and a ${this.timeoutSec}s round timer (every response includes agentBudget.remainingExplorationCalls and agentBudget.runnerSecondsRemaining).`,
+      `STRICT BUDGET & PACING: You have a hard cap of ${maxStepsPerRound} exploration calls (look_around / pan_and_zoom / move combined) and a ${timeoutSec}s round timer (every response includes agentBudget.remainingExplorationCalls and agentBudget.runnerSecondsRemaining).`,
       `Be brisk and decisive: do 1 look_around, then at most 1-${maxFollowupCalls} targeted pan_and_zoom or move calls. Do NOT waste multiple zooms trying to read tiny blurry text.`,
       `If remainingExplorationCalls hits 0, runnerSecondsRemaining drops below 35s, or any tool returns TIME WARNING or step limit reached, IMMEDIATELY call submit_guess with your best coordinates.`,
       `INSTRUCTIONS:`,
@@ -360,7 +504,7 @@ export class AgyRunner {
         '--dangerously-skip-permissions',
         '--disable-slash-commands',
         '--print-timeout',
-        `${this.timeoutSec + 10}s`,
+        `${timeoutSec + 10}s`,
         '--output-format',
         'text',
       ],
@@ -404,21 +548,21 @@ export class AgyRunner {
         runState.lastMessage = 'Guess submitted before timeout';
       } else {
         runState.lastStatus = 'timeout';
-        runState.lastMessage = `Timed out after ${this.timeoutSec}s`;
+        runState.lastMessage = `Timed out after ${timeoutSec}s`;
         this.engine.logAgentActivity(
           agentId,
           'timeout',
-          `${model.label} timed out after ${this.timeoutSec}s`
+          `${model.label} timed out after ${timeoutSec}s`
         );
         this.engine.setManagedAgentRoundAvailability(agentId, false, 'idle');
       }
       if (logStream && !logStream.writableEnded) {
         logStream.end(
-          `\n=== Closed (timeout after ${this.timeoutSec}s) | ${new Date().toISOString()} ===\n`
+          `\n=== Closed (timeout after ${timeoutSec}s) | ${new Date().toISOString()} ===\n`
         );
       }
       this.engine.notifyStateChanged(roomCode);
-    }, (this.timeoutSec + 12) * 1000);
+    }, (timeoutSec + 12) * 1000);
 
     this.activeProcs.set(agentId, {
       child,
@@ -536,9 +680,13 @@ export class AgyRunner {
 
   public stopAllActiveRuns(
     reason = 'Stopped by player',
-    notify = true
+    notify = true,
+    roomCode?: string
   ): AgyRunnerStatus {
-    const entries = Array.from(this.activeProcs.entries());
+    const scopedRoom = roomCode ? this.resolveRoomCode(roomCode) : null;
+    const entries = Array.from(this.activeProcs.entries()).filter(
+      ([, entry]) => !scopedRoom || entry.roomCode === scopedRoom
+    );
     const touchedRooms = new Set<string>();
     for (const [id, entry] of entries) {
       touchedRooms.add(entry.roomCode);
@@ -554,14 +702,14 @@ export class AgyRunner {
     }
     if (notify) {
       if (touchedRooms.size === 0) {
-        this.engine.notifyStateChanged(this.activeRoomCode);
+        this.engine.notifyStateChanged(scopedRoom ?? this.activeRoomCode);
       } else {
         for (const r of touchedRooms) {
           this.engine.notifyStateChanged(r);
         }
       }
     }
-    return this.getStatus();
+    return this.getStatus(scopedRoom ?? undefined);
   }
 
   public shutdown(): void {

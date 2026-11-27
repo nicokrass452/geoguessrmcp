@@ -26,12 +26,14 @@ async function main() {
   const agyRunner = new AgyRunner(config, engine);
   const sessionAuth = new SessionAuth(config.cacheDir);
   engine.setLifecycleHooks({
+    onRoomConfigured: (roomCode, opts) =>
+      agyRunner.onRoomConfigured(roomCode, opts),
     onRoundStarted: (roundNum, roomCode) =>
       agyRunner.onRoundStarted(roundNum, roomCode),
     onRoundEnded: (roundNum, roomCode) =>
       agyRunner.onRoundEnded(roundNum, roomCode),
     onMatchReset: (roomCode) => agyRunner.onMatchReset(roomCode),
-    getAgyStatus: () => agyRunner.getStatus(),
+    getAgyStatus: (roomCode) => agyRunner.getStatus(roomCode),
   });
   await engine.init();
 

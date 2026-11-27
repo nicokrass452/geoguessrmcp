@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Home – draft</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .hero { max-width: 1120px; margin: 0 auto; padding: 36px 48px 0; }
+  h1 { font-size: 46px; line-height: 1.08; letter-spacing: -0.03em; margin: 0 0 12px; }
+  .sub { font-size: 18px; color: var(--muted); margin: 0 0 36px; max-width: 620px; }
+  .modes { display: grid; grid-template-columns: 1.35fr 1fr 1fr; gap: 18px; }
+  .mode { padding: 26px; display: flex; flex-direction: column; gap: 10px; min-height: 270px; position: relative; overflow: hidden; }
+  .mode h2 { margin: 0; font-size: 23px; letter-spacing: -0.01em; }
+  .mode p { margin: 0; color: var(--muted); font-size: 15px; }
+  .mode .icon { font-size: 30px; }
+  .mode .spacer { flex: 1; }
+  .mode.main { background: linear-gradient(160deg, #173a2a 0%, var(--panel) 60%); border-color: rgba(34,197,94,.35); }
+  .faces { display: flex; }
+  .faces .avatar { width: 38px; height: 38px; border: 3px solid var(--panel); margin-left: -8px; }
+  .faces .avatar:first-child { margin-left: 0; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 18px; }
+  .slim { padding: 18px 22px; display: flex; align-items: center; gap: 16px; }
+  .slim h3 { margin: 0; font-size: 16px; }
+  .slim p { margin: 2px 0 0; font-size: 14px; color: var(--muted); }
+  .code-input { flex: 1; display: flex; gap: 8px; }
+  .code-input input { flex: 1; background: var(--bg); border: 1px solid var(--line-2); border-radius: 12px; color: var(--text); padding: 11px 14px; font-size: 16px; letter-spacing: .15em; font-family: Consolas, monospace; text-transform: uppercase; }
+  .footer { max-width: 1120px; margin: 26px auto 0; padding: 0 48px; display: flex; gap: 18px; color: var(--muted); font-size: 13px; }
+</style></head>
+<body>
+  <nav class="nav">
+    <div class="brand"><div class="logo">🌍</div>GeoArena</div>
+    <div class="nav-right">
+      <span class="chip"><span class="dot"></span>AI agents online</span>
+      <span class="chip">⚙ Settings</span>
+      <div class="avatar" style="background:var(--you)">CP</div>
+    </div>
+  </nav>
+
+  <main class="hero">
+    <h1>Where in the world are you?</h1>
+    <p class="sub">Drop into a random 360° street view, look around, and pin your guess on the map. Beat your friends — or the AI.</p>
+
+    <div class="modes">
+      <a class="card mode main">
+        <div class="icon">⚔️</div>
+        <h2>Play vs AI</h2>
+        <p>Race Gemini, Claude and GPT to the right spot. Pick one opponent or take them all on.</p>
+        <div class="spacer"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div class="faces">
+            <div class="avatar" style="background:var(--gemini)">G</div>
+            <div class="avatar" style="background:var(--claude)">C</div>
+            <div class="avatar" style="background:var(--gpt)">O</div>
+          </div>
+          <span class="btn btn-primary btn-lg">▶ Quick Play</span>
+        </div>
+      </a>
+      <a class="card mode">
+        <div class="icon">👥</div>
+        <h2>Play with friends</h2>
+        <p>Create a private room and share a link. Add AI players if you want.</p>
+        <div class="spacer"></div>
+        <span class="btn btn-block">Create room</span>
+      </a>
+      <a class="card mode">
+        <div class="icon">🍿</div>
+        <h2>Watch the AIs</h2>
+        <p>Sit back and see how the models reason their way around the globe.</p>
+        <div class="spacer"></div>
+        <span class="btn btn-block">Start show</span>
+      </a>
+    </div>
+
+    <div class="row2">
+      <div class="card slim">
+        <div style="font-size:26px">🔑</div>
+        <div style="min-width:150px"><h3>Got a room code?</h3><p>Or paste an invite link</p></div>
+        <div class="code-input"><input value="AB12CD"><span class="btn btn-primary">Join</span></div>
+      </div>
+      <div class="card slim">
+        <div style="font-size:26px">🧭</div>
+        <div style="flex:1"><h3>Solo practice</h3><p>No timer, no pressure. Just you and the map.</p></div>
+        <span class="btn">Practice</span>
+      </div>
+    </div>
+  </main>
+  <div class="footer"><span>Last game: 18,420 pts · 2nd of 4</span><span>·</span><span>Developers: connect your own agent via MCP →</span></div>
+
+  <div class="note" style="top:96px;left:1140px">Status reduced to one friendly chip. Tech details (MCP, provider) moved to Settings.</div>
+  <div class="note" style="top:330px;left:40px;max-width:180px">One clear primary action. 5 equal cards → 3 big + 2 small.</div>
+</body></html>

@@ -233,7 +233,12 @@ export const api = {
         roomCode: getSessionRoomCode() || undefined,
       }),
     }),
-  getAgyStatus: () => requestJson<AgyRunnerStatus>('/api/agy/status'),
+  getAgyStatus: () => {
+    const rcode = getSessionRoomCode();
+    return requestJson<AgyRunnerStatus>(
+      `/api/agy/status${rcode ? `?roomCode=${encodeURIComponent(rcode)}` : ''}`
+    );
+  },
   updateAgyConfig: (opts: {
     autoPlayEnabled?: boolean;
     selectedModels?: string[];
@@ -242,13 +247,24 @@ export const api = {
   }) =>
     requestJson<AgyRunnerStatus>('/api/agy/config', {
       method: 'POST',
-      body: JSON.stringify(opts),
+      body: JSON.stringify({
+        ...opts,
+        roomCode: getSessionRoomCode() || undefined,
+      }),
     }),
   triggerAgyRound: (models?: string[]) =>
     requestJson<AgyRunnerStatus>('/api/agy/trigger', {
       method: 'POST',
-      body: JSON.stringify(models ? { models } : {}),
+      body: JSON.stringify({
+        ...(models ? { models } : {}),
+        roomCode: getSessionRoomCode() || undefined,
+      }),
     }),
   stopAgyRuns: () =>
-    requestJson<AgyRunnerStatus>('/api/agy/stop', { method: 'POST' }),
+    requestJson<AgyRunnerStatus>('/api/agy/stop', {
+      method: 'POST',
+      body: JSON.stringify({
+        roomCode: getSessionRoomCode() || undefined,
+      }),
+    }),
 };

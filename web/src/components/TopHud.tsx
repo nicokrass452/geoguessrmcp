@@ -1,18 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  Check,
-  Clock,
-  Coins,
-  Globe2,
-  Home,
-  Link2,
-  Radio,
-  Settings2,
-  Trophy,
-  User,
-  Wifi,
-  WifiOff,
-} from 'lucide-react';
+import { Check, Home, Link2, Menu, Settings, Terminal, WifiOff } from 'lucide-react';
 import type { PublicGameState } from '@geoguessr-mcp/shared';
 import {
   buildRoomInviteUrl,
@@ -23,11 +10,12 @@ export interface TopHudProps {
   state: PublicGameState;
   wsConnected: boolean;
   onOpenSettings: () => void;
+  onOpenDeveloper?: () => void;
   onReturnHome: () => void;
 }
 
 function formatTime(sec: number | null): string {
-  if (sec === null) return 'No Limit';
+  if (sec === null) return 'No limit';
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return `${m}:${String(s).padStart(2, '0')}`;
@@ -37,16 +25,31 @@ export function TopHud({
   state,
   wsConnected,
   onOpenSettings,
+  onOpenDeveloper,
   onReturnHome,
 }: TopHudProps) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const [copiedInvite, setCopiedInvite] = useState(false);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     return () => {
       if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', onPointerDown);
+    return () => window.removeEventListener('mousedown', onPointerDown);
+  }, [menuOpen]);
+
   const timerUrgent =
     state.timeRemainingSec !== null && state.timeRemainingSec <= 15;
   const timerWarn =
@@ -54,182 +57,172 @@ export function TopHud({
     state.timeRemainingSec <= 30 &&
     !timerUrgent;
 
-  const mcpStatus = state.mcpStatus;
-  const mcpBadge =
-    mcpStatus?.status === 'connected'
-      ? {
-          label: `MCP Connected${mcpStatus.activeMcpAgents > 0 ? ` (${mcpStatus.activeMcpAgents})` : ''}`,
-          cls: 'border-emerald-400/40 bg-emerald-500/20 text-emerald-300',
-        }
-      : mcpStatus?.status === 'bridge_ready'
-        ? {
-            label: 'MCP Bridge Ready',
-            cls: 'border-sky-400/40 bg-sky-500/20 text-sky-300',
-          }
-        : {
-            label: 'MCP Offline',
-            cls: 'border-slate-700 bg-slate-900/90 text-slate-400',
-          };
-
   const isMultiHuman =
     state.mode === 'pvp' ||
     state.mode === 'pvp_ai' ||
     (state.humans && state.humans.length > 1);
 
   return (
-    <header className="pointer-events-none absolute top-3 left-3 right-3 z-30 flex flex-wrap items-center justify-between gap-2">
-      {/* Left Brand + Quick Return Home + Mode + Live MCP Badge */}
-      <div className="pointer-events-auto flex flex-wrap items-center gap-2.5 rounded-2xl border border-white/15 bg-slate-950/85 px-3 py-2 backdrop-blur-md shadow-xl">
+    <header className="pointer-events-none absolute top-4 left-4 right-4 z-30 flex items-start justify-between gap-2">
+      {/* Left: Menu button + Reconnecting indicator (only if disconnected) */}
+      <div ref={menuRef} className="pointer-events-auto relative flex items-center gap-2">
         <button
           type="button"
-          data-testid="quick-return-home"
-          aria-label="Quick Return to Home"
-          title="Quick Return to Home"
-          onClick={onReturnHome}
-          className="flex items-center gap-1.5 rounded-xl border border-white/15 bg-slate-900 px-2.5 py-1.5 text-xs font-bold text-slate-100 hover:bg-slate-800 hover:border-sky-400/40 transition"
+          onClick={() => setMenuOpen((v) => !v)}
+          className="geo-glass inline-flex items-center gap-2 px-3.5 py-2.5 text-[14px] font-semibold text-[#eef1f8] hover:border-white/25 transition"
         >
-          <Home className="h-3.5 w-3.5 text-sky-400" />
-          <span>Home</span>
+          <Menu className="h-4 w-4 text-[#8d97ae]" />
+          <span>Menu</span>
         </button>
 
-        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-sky-400 to-emerald-400 text-slate-950 shadow-md">
-          <Globe2 className="h-4 w-4 stroke-[2.5]" />
-        </div>
-        <div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-sm font-bold tracking-tight text-slate-100">
-              GeoGuessr MCP
-            </span>
-            <span className="rounded-md bg-sky-500/20 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sky-300 border border-sky-400/30">
-              {state.mode}
-            </span>
-            {state.locationMode !== 'standard' && (
-              <span className="rounded-md bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-300 border border-emerald-400/30">
-                {state.locationMode === 'big_cities'
-                  ? 'Big Cities'
-                  : 'Mountains'}
-              </span>
-            )}
-            {isMultiHuman && state.roomCode && (
-              <button
-                type="button"
-                data-testid="room-code"
-                aria-label={`Room Code ${state.roomCode}`}
-                title="Click to copy auto-join invite link"
-                onClick={() => {
-                  const link = buildRoomInviteUrl(state.roomCode || '');
-                  void copyTextToClipboard(link).then((ok) => {
-                    if (!ok) return;
-                    setCopiedInvite(true);
-                    if (copyTimerRef.current) {
-                      clearTimeout(copyTimerRef.current);
-                    }
-                    copyTimerRef.current = setTimeout(
-                      () => setCopiedInvite(false),
-                      1800
-                    );
-                  });
-                }}
-                className="flex items-center gap-1 rounded-md border border-violet-400/40 bg-violet-500/20 px-1.5 py-0.5 font-mono text-[10px] font-bold text-violet-200 hover:bg-violet-500/30 transition"
-              >
-                {copiedInvite ? (
-                  <Check className="h-2.5 w-2.5 text-emerald-300" />
-                ) : (
-                  <Link2 className="h-2.5 w-2.5" />
-                )}
-                <span>Room {state.roomCode}</span>
-              </button>
-            )}
+        {!wsConnected && (
+          <div className="geo-glass inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-rose-300 border-rose-500/40">
+            <WifiOff className="h-3.5 w-3.5" />
+            <span>Reconnecting…</span>
           </div>
-          <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
-            <span className="flex items-center gap-1 font-semibold text-slate-200">
-              <User className="h-3 w-3 text-sky-400" />
-              <span>{state.human.name}</span>
-            </span>
-            <span>•</span>
-            <span>{state.activeLocationProvider}</span>
-            <span>•</span>
-            <span className="flex items-center gap-1">
-              {wsConnected ? (
-                <>
-                  <Wifi className="h-3 w-3 text-emerald-400" />
-                  <span className="text-emerald-400">Live Sync</span>
-                </>
-              ) : (
-                <>
-                  <WifiOff className="h-3 w-3 text-rose-400" />
-                  <span className="text-rose-400">Reconnecting</span>
-                </>
-              )}
-            </span>
-          </div>
-        </div>
-
-        <div
-          data-testid="live-mcp-badge"
-          aria-label={`Live MCP status: ${mcpBadge.label}`}
-          className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-[11px] font-bold ${mcpBadge.cls}`}
-        >
-          <Radio className="h-3 w-3" />
-          <span>{mcpBadge.label}</span>
-        </div>
-      </div>
-
-      {/* Right Stats + Chips + Settings */}
-      <div className="pointer-events-auto flex flex-wrap items-center gap-2 rounded-2xl border border-white/15 bg-slate-950/85 px-3 py-1.5 backdrop-blur-md shadow-xl">
-        <div className="flex items-center gap-1.5 px-2 text-xs">
-          <span className="text-slate-400">Round</span>
-          <span className="font-bold text-slate-100">
-            {state.currentRoundNumber} / {state.totalRounds}
-          </span>
-        </div>
-
-        <div className="h-4 w-px bg-white/10" />
-
-        <div
-          className={`flex items-center gap-1.5 px-2 text-xs font-mono font-semibold ${
-            timerUrgent
-              ? 'text-rose-400 animate-pulse'
-              : timerWarn
-                ? 'text-amber-300'
-                : 'text-slate-200'
-          }`}
-        >
-          <Clock className="h-3.5 w-3.5" />
-          <span>{formatTime(state.timeRemainingSec)}</span>
-        </div>
-
-        <div className="h-4 w-px bg-white/10" />
-
-        <div className="flex items-center gap-1.5 px-2 text-xs">
-          <Trophy className="h-3.5 w-3.5 text-amber-400" />
-          <span className="text-slate-400">Score</span>
-          <span className="font-bold text-emerald-400">
-            {state.human.totalScore.toLocaleString()}
-          </span>
-        </div>
-
-        {state.bettingEnabled && state.mode !== 'spectator' && (
-          <>
-            <div className="h-4 w-px bg-white/10" />
-            <div
-              data-testid="top-hud-chips"
-              className="flex items-center gap-1.5 rounded-xl border border-amber-400/30 bg-amber-500/15 px-2.5 py-1 text-xs font-bold text-amber-300"
-            >
-              <Coins className="h-3.5 w-3.5 text-amber-400" />
-              <span>{state.human.chips.toLocaleString()} chips</span>
-            </div>
-          </>
         )}
 
-        <button
-          type="button"
-          onClick={onOpenSettings}
-          className="ml-1 flex items-center gap-1.5 rounded-xl border border-white/10 bg-slate-800/80 px-2.5 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-700 transition"
+        {menuOpen && (
+          <div className="absolute top-12 left-0 w-56 rounded-2xl border border-white/15 bg-[#121a2e]/95 p-1.5 shadow-2xl backdrop-blur-md">
+            <button
+              type="button"
+              onClick={() => {
+                setMenuOpen(false);
+                onOpenSettings();
+              }}
+              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-[#eef1f8] hover:bg-white/10 transition"
+            >
+              <Settings className="h-4 w-4 text-[#8d97ae]" />
+              <span>Change settings</span>
+            </button>
+            {onOpenDeveloper && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onOpenDeveloper();
+                }}
+                className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-[#eef1f8] hover:bg-white/10 transition"
+              >
+                <Terminal className="h-4 w-4 text-[#8d97ae]" />
+                <span>Developer &amp; MCP</span>
+              </button>
+            )}
+            <div className="my-1 h-px bg-white/10" />
+            <button
+              type="button"
+              data-testid="quick-return-home"
+              onClick={() => {
+                setMenuOpen(false);
+                onReturnHome();
+              }}
+              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-rose-300 hover:bg-rose-500/15 transition"
+            >
+              <Home className="h-4 w-4" />
+              <span>Leave game</span>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Center: Clean 3-Stat Bar (Round, Time, Score [+ Chips if betting]) */}
+      <div className="pointer-events-auto geo-glass flex items-stretch overflow-hidden">
+        <div className="px-4 sm:px-5 py-2 text-center border-r border-white/10">
+          <small className="block text-[11px] font-bold uppercase tracking-[0.1em] text-[#8d97ae]">
+            Round
+          </small>
+          <b className="text-[18px] sm:text-[22px] font-extrabold text-white leading-tight">
+            {state.currentRoundNumber} / {state.totalRounds}
+          </b>
+        </div>
+
+        <div
+          className={`px-4 sm:px-5 py-2 text-center ${
+            state.mode !== 'spectator' || state.bettingEnabled
+              ? 'border-r border-white/10'
+              : ''
+          }`}
         >
-          <Settings2 className="h-3.5 w-3.5 text-sky-400" />
-          <span className="hidden sm:inline">Match Setup</span>
-        </button>
+          <small className="block text-[11px] font-bold uppercase tracking-[0.1em] text-[#8d97ae]">
+            Time
+          </small>
+          <b
+            className={`text-[18px] sm:text-[22px] font-extrabold leading-tight font-mono ${
+              timerUrgent
+                ? 'text-rose-400 animate-pulse'
+                : timerWarn
+                  ? 'text-[#fbbf24]'
+                  : state.timeRemainingSec !== null
+                    ? 'text-[#fbbf24]'
+                    : 'text-white'
+            }`}
+          >
+            {formatTime(state.timeRemainingSec)}
+          </b>
+        </div>
+
+        {state.mode !== 'spectator' && (
+          <div
+            className={`px-4 sm:px-5 py-2 text-center ${
+              state.bettingEnabled ? 'border-r border-white/10' : ''
+            }`}
+          >
+            <small className="block text-[11px] font-bold uppercase tracking-[0.1em] text-[#8d97ae]">
+              Score
+            </small>
+            <b className="text-[18px] sm:text-[22px] font-extrabold text-white leading-tight">
+              {state.human.totalScore.toLocaleString()}
+            </b>
+          </div>
+        )}
+
+        {state.bettingEnabled && state.mode !== 'spectator' && (
+          <div
+            data-testid="top-hud-chips"
+            className="px-4 sm:px-5 py-2 text-center"
+          >
+            <small className="block text-[11px] font-bold uppercase tracking-[0.1em] text-[#8d97ae]">
+              Chips
+            </small>
+            <b className="text-[18px] sm:text-[22px] font-extrabold text-[#fbbf24] leading-tight">
+              {state.human.chips.toLocaleString()}
+            </b>
+          </div>
+        )}
+      </div>
+
+      {/* Right: Room Code & Invite Link Pill (multiplayer only) */}
+      <div className="pointer-events-auto flex items-center justify-end min-w-[84px]">
+        {isMultiHuman && state.roomCode && (
+          <button
+            type="button"
+            data-testid="room-code"
+            aria-label={`Room Code ${state.roomCode}`}
+            title="Copy invite link"
+            onClick={() => {
+              const link = buildRoomInviteUrl(state.roomCode || '');
+              void copyTextToClipboard(link).then((ok) => {
+                if (!ok) return;
+                setCopiedInvite(true);
+                if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+                copyTimerRef.current = setTimeout(
+                  () => setCopiedInvite(false),
+                  1800
+                );
+              });
+            }}
+            className="geo-glass inline-flex items-center gap-2 px-3.5 py-2.5 text-[14px] text-[#eef1f8] hover:border-white/25 transition"
+          >
+            <span className="text-[#8d97ae]">Room</span>
+            <b className="font-mono font-bold text-white">{state.roomCode}</b>
+            <span className="text-[#8d97ae]">·</span>
+            {copiedInvite ? (
+              <Check className="h-4 w-4 text-[#22c55e]" />
+            ) : (
+              <Link2 className="h-4 w-4 text-[#8d97ae]" />
+            )}
+          </button>
+        )}
       </div>
     </header>
   );

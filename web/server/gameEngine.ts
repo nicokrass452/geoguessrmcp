@@ -130,10 +130,22 @@ interface RoomRuntime {
 }
 
 export interface EngineLifecycleHooks {
+  onRoomConfigured?: (
+    roomCode: string,
+    opts: {
+      mode: GameMode;
+      matchStatus: MatchStatus;
+      allowAi: boolean;
+      autoPlayEnabled?: boolean;
+      selectedModels?: string[];
+      maxStepsPerRound?: number;
+      timeoutSec?: number;
+    }
+  ) => void;
   onRoundStarted?: (roundNumber: number, roomCode: string) => void;
   onRoundEnded?: (roundNumber: number, roomCode: string) => void;
   onMatchReset?: (roomCode: string) => void;
-  getAgyStatus?: () => AgyRunnerStatus;
+  getAgyStatus?: (roomCode?: string) => AgyRunnerStatus;
 }
 
 export interface MatchSetupOptions {
@@ -149,6 +161,9 @@ export interface MatchSetupOptions {
   roundDurationSec?: number | null;
   maxStepsPerRound?: number | null;
   provider?: PanoramaProviderChoice;
+  selectedModels?: string[];
+  timeoutSec?: number;
+  autoPlayEnabled?: boolean;
   autoStart?: boolean;
 }
 
@@ -965,6 +980,16 @@ export class GameEngine {
     );
     room.humans.set(hostId, hostHuman);
 
+    this.lifecycleHooks.onRoomConfigured?.(code, {
+      mode: room.mode,
+      matchStatus: room.matchStatus,
+      allowAi: room.mode !== 'solo' && room.mode !== 'pvp',
+      autoPlayEnabled: opts.autoPlayEnabled,
+      selectedModels: opts.selectedModels,
+      maxStepsPerRound: opts.maxStepsPerRound ?? undefined,
+      timeoutSec: opts.timeoutSec,
+    });
+
     await this.setupRound(room, 1);
 
     this.pushActivity(
@@ -1347,7 +1372,7 @@ export class GameEngine {
           : null,
       completedRounds: [...room.completedRounds],
       leaderboard: this.getLeaderboardEntries(room.roomCode),
-      agyRunner: this.lifecycleHooks.getAgyStatus?.(),
+      agyRunner: this.lifecycleHooks.getAgyStatus?.(room.roomCode),
       mcpStatus: this.getMcpStatusSync(),
     };
   }
@@ -1539,6 +1564,14 @@ export class GameEngine {
     return this.toPlayerInfo(agent);
   }
 
+  public enableAiInLobbyRoom(roomCode?: string): void {
+    const room = this.resolveRoom(roomCode);
+    if (room.matchStatus === 'lobby' && room.mode === 'pvp') {
+      room.mode = 'pvp_ai';
+      this.broadcastRoomStateSync(room);
+    }
+  }
+
   public registerManagedAgent(opts: {
     agentId: string;
     name: string;
@@ -1562,7 +1595,10 @@ export class GameEngine {
 
     const color = AGENT_COLORS[room.colorCursor % AGENT_COLORS.length];
     room.colorCursor += 1;
-    const spawnNode = this.getInternalNode(room, room.currentRound.spawnOpaqueId);
+    const spawnOpaqueId = room.currentRound?.spawnOpaqueId || 'node_0';
+    const spawnNode = room.currentRound
+      ? this.getInternalNode(room, spawnOpaqueId)
+      : null;
     const agent: MutablePlayerState = {
       id: opts.agentId,
       name: opts.name,
@@ -1572,8 +1608,8 @@ export class GameEngine {
       color,
       status: 'exploring',
       connected: true,
-      currentOpaqueNodeId: room.currentRound.spawnOpaqueId,
-      camera: clampCamera(spawnNode.initialHeading, 0, 0),
+      currentOpaqueNodeId: spawnOpaqueId,
+      camera: clampCamera(spawnNode?.initialHeading ?? 0, 0, 0),
       stepCount: 0,
       frameVersion: 1,
       managed: true,

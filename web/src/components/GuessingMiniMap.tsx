@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
   Coins,
-  Flag,
   MapPin,
   Maximize2,
   Minimize2,
@@ -51,7 +50,7 @@ function createPinIcon(color: string): L.DivIcon {
     iconSize: [28, 36],
     iconAnchor: [14, 34],
     html: `<svg width="28" height="36" viewBox="0 0 28 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M14 0C6.268 0 0 6.268 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.268 21.732 0 14 0z" fill="${color}" stroke="#0f172a" stroke-width="2"/>
+      <path d="M14 0C6.268 0 0 6.268 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.268 21.732 0 14 0z" fill="${color}" stroke="#ffffff" stroke-width="2.5"/>
       <circle cx="14" cy="14" r="5" fill="#ffffff"/>
     </svg>`,
   });
@@ -120,7 +119,6 @@ export function GuessingMiniMap({
     setWager((prev) => clampWager(prev, safeChips));
   }, [safeChips]);
 
-  // Initialize Leaflet map once
   const placePinAtLatLng = (latRaw: number, lngRaw: number) => {
     if (hasGuessedRef.current) return;
     const lat = Math.max(-85, Math.min(85, Number(latRaw.toFixed(5))));
@@ -134,7 +132,7 @@ export function GuessingMiniMap({
       markerRef.current.setLatLng([lat, lng]);
     } else {
       markerRef.current = L.marker([lat, lng], {
-        icon: createPinIcon('#38bdf8'),
+        icon: createPinIcon('#60a5fa'),
       }).addTo(map);
     }
   };
@@ -178,7 +176,11 @@ export function GuessingMiniMap({
       }
       try {
         const latlng = map.mouseEventToLatLng(evt);
-        if (latlng && Number.isFinite(latlng.lat) && Number.isFinite(latlng.lng)) {
+        if (
+          latlng &&
+          Number.isFinite(latlng.lat) &&
+          Number.isFinite(latlng.lng)
+        ) {
           placePinAtLatLng(latlng.lat, latlng.lng);
           return;
         }
@@ -207,7 +209,9 @@ export function GuessingMiniMap({
 
     return () => {
       active = false;
-      el.removeEventListener('mousedown', onDomMouseDownCapture, { capture: true });
+      el.removeEventListener('mousedown', onDomMouseDownCapture, {
+        capture: true,
+      });
       el.removeEventListener('click', onDomClickCapture, { capture: true });
       ro.disconnect();
       map.remove();
@@ -225,6 +229,44 @@ export function GuessingMiniMap({
     return () => clearTimeout(timer);
   }, [expanded, collapsed, maximized, bettingEnabled, hasGuessed]);
 
+  const handleSubmit = useCallback(() => {
+    if (!selectedCoords || submitting || hasGuessed) return;
+    if (bettingEnabled) {
+      setSubmittedWager(clampedWager);
+      onSubmitGuess(selectedCoords.lat, selectedCoords.lng, clampedWager);
+    } else {
+      onSubmitGuess(selectedCoords.lat, selectedCoords.lng);
+    }
+  }, [
+    selectedCoords,
+    submitting,
+    hasGuessed,
+    bettingEnabled,
+    clampedWager,
+    onSubmitGuess,
+  ]);
+
+  // Spacebar shortcut to submit guess
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' || e.repeat) return;
+      const tag = document.activeElement?.tagName;
+      if (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        tag === 'BUTTON'
+      ) {
+        return;
+      }
+      if (!selectedCoords || hasGuessed || submitting) return;
+      e.preventDefault();
+      handleSubmit();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selectedCoords, hasGuessed, submitting, handleSubmit]);
+
   const waitingAgents = agents.filter((a) => a.connected && !a.hasGuessed);
   const isMultiHuman = humans.length > 1;
   const waitingHumans = isMultiHuman
@@ -239,11 +281,7 @@ export function GuessingMiniMap({
 
   const waitingSummaryText = isMultiHuman
     ? waitingCount > 0
-      ? `Waiting for ${waitingCount} player${waitingCount === 1 ? '' : 's'}${
-          waitingHumans.length > 0 && waitingAgents.length > 0
-            ? ` (${waitingHumans.length} human, ${waitingAgents.length} AI)`
-            : ''
-        }`
+      ? `Waiting for ${waitingCount} player${waitingCount === 1 ? '' : 's'}`
       : ''
     : waitingAgents.length > 0
       ? `Waiting for ${waitingAgents.length} AI`
@@ -258,16 +296,16 @@ export function GuessingMiniMap({
   const showBettingControls = bettingEnabled && !hasGuessed;
 
   const boxSizeClass = collapsed
-    ? 'w-72 h-11'
+    ? 'w-72 h-12'
     : maximized
-      ? 'w-[min(640px,90vw)] h-[min(460px,68vh)]'
+      ? 'w-[min(680px,90vw)] h-[min(500px,72vh)]'
       : expanded
         ? showBettingControls
-          ? 'w-[min(440px,calc(100vw-2.5rem))] h-[376px]'
-          : 'w-[min(430px,calc(100vw-2.5rem))] h-[310px]'
+          ? 'w-[min(460px,calc(100vw-2rem))] h-[420px]'
+          : 'w-[min(460px,calc(100vw-2rem))] h-[350px]'
         : showBettingControls
-          ? 'w-80 h-80'
-          : 'w-72 h-48';
+          ? 'w-[min(420px,calc(100vw-2rem))] h-[360px]'
+          : 'w-[min(420px,calc(100vw-2rem))] h-[300px]';
 
   const presets = [
     { label: '0', value: 0, optionDisabled: false },
@@ -278,57 +316,40 @@ export function GuessingMiniMap({
       value: Math.floor(safeChips * 0.5),
       optionDisabled: safeChips === 0,
     },
-    { label: 'All-In', value: safeChips, optionDisabled: safeChips === 0 },
+    { label: 'All-in', value: safeChips, optionDisabled: safeChips === 0 },
   ];
-
-  const handleSubmit = () => {
-    if (!selectedCoords || submitting) return;
-    if (bettingEnabled) {
-      setSubmittedWager(clampedWager);
-      onSubmitGuess(selectedCoords.lat, selectedCoords.lng, clampedWager);
-    } else {
-      onSubmitGuess(selectedCoords.lat, selectedCoords.lng);
-    }
-  };
 
   return (
     <div
       data-testid="guess-minimap"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className={`absolute bottom-5 right-5 z-30 flex max-h-[calc(100vh-6rem)] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-2xl border border-white/15 bg-slate-950/90 backdrop-blur-md shadow-2xl transition-all duration-200 ${boxSizeClass}`}
+      className={`geo-glass absolute bottom-4 right-4 z-30 flex max-h-[calc(100vh-6rem)] max-w-[calc(100vw-2rem)] flex-col overflow-hidden p-0 shadow-2xl transition-all duration-200 ${boxSizeClass}`}
     >
-      {/* Header Bar */}
-      <div className="flex items-center justify-between border-b border-white/10 px-3 py-2 text-xs">
-        <div className="flex items-center gap-2 font-semibold text-slate-100">
-          <MapPin className="h-3.5 w-3.5 text-sky-400" />
-          <span>Guess Map</span>
-          {selectedCoords && !hasGuessed && (
-            <span className="font-mono text-[10px] text-slate-400">
-              {selectedCoords.lat.toFixed(2)}, {selectedCoords.lng.toFixed(2)}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-1">
-          {!collapsed && (
-            <>
-              <button
-                type="button"
-                onClick={() => setPinnedOpen((p) => !p)}
-                title={pinnedOpen ? 'Unpin map size' : 'Pin map expanded'}
-                className={`rounded-md p-1 transition ${
-                  pinnedOpen
-                    ? 'bg-sky-500/25 text-sky-300'
-                    : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-                }`}
-              >
-                <Pin className="h-3.5 w-3.5" />
-              </button>
+      {collapsed ? (
+        <button
+          type="button"
+          onClick={() => setCollapsed(false)}
+          className="flex h-full w-full items-center justify-between px-4 text-sm font-semibold text-white hover:bg-white/5 transition"
+        >
+          <span className="flex items-center gap-2">
+            <MapPin className="h-4 w-4 text-[#22c55e]" />
+            <span>Open guess map</span>
+          </span>
+          <ChevronUp className="h-4 w-4 text-[#8d97ae]" />
+        </button>
+      ) : (
+        <>
+          {/* Map Canvas + Floating Top-Right Mini Controls */}
+          <div className="relative min-h-0 flex-1">
+            <div ref={mapDivRef} className="h-full w-full" />
+
+            <div className="absolute top-2.5 right-2.5 z-[450] flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => setMaximized((m) => !m)}
-                title={maximized ? 'Restore size' : 'Maximize map'}
-                className="rounded-md p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition"
+                title={maximized ? 'Restore map' : 'Maximize map'}
+                className="grid h-8 w-8 place-items-center rounded-lg bg-[#0b1020]/85 text-[#eef1f8] border border-white/15 hover:bg-[#18223a] transition"
               >
                 {maximized ? (
                   <Minimize2 className="h-3.5 w-3.5" />
@@ -336,158 +357,153 @@ export function GuessingMiniMap({
                   <Maximize2 className="h-3.5 w-3.5" />
                 )}
               </button>
-            </>
-          )}
-          <button
-            type="button"
-            onClick={() => setCollapsed((c) => !c)}
-            title={collapsed ? 'Expand map' : 'Collapse map'}
-            className="rounded-md p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition"
-          >
-            {collapsed ? (
-              <ChevronUp className="h-4 w-4" />
-            ) : (
-              <ChevronDown className="h-4 w-4" />
-            )}
-          </button>
-        </div>
-      </div>
-
-      {/* Leaflet Canvas */}
-      <div
-        className={`relative min-h-0 flex-1 ${collapsed ? 'hidden' : 'block'}`}
-      >
-        <div ref={mapDivRef} className="h-full w-full" />
-      </div>
-
-      {/* Action Footer */}
-      {!collapsed && (
-        <div className="border-t border-white/10 bg-slate-950/95 p-2 flex flex-col gap-2">
-          {hasGuessed ? (
-            <div className="flex w-full items-center justify-between gap-2">
-              <div className="flex min-w-0 items-center gap-1.5 text-xs text-emerald-400 font-medium">
-                <CheckCircle2 className="h-4 w-4 shrink-0" />
-                <span className="truncate">
-                  Locked
-                  {myGuess
-                    ? ` (${myGuess.latitude.toFixed(2)}, ${myGuess.longitude.toFixed(2)})`
-                    : ''}
-                  {bettingEnabled
-                    ? ` · Wagered ${lockedWager.toLocaleString()} chips`
-                    : ''}
-                  {waitingSummaryText ? ` · ${waitingSummaryText}` : ''}
-                </span>
-              </div>
-              {waitingCount > 0 && (
-                <button
-                  type="button"
-                  onClick={onForceEndRound}
-                  className="shrink-0 rounded-lg border border-amber-500/40 bg-amber-500/15 px-2.5 py-1 text-[11px] font-semibold text-amber-300 hover:bg-amber-500/25 transition"
-                >
-                  End Round Now
-                </button>
-              )}
-            </div>
-          ) : (
-            <>
-              {bettingEnabled && (
-                <div className="rounded-xl border border-amber-400/20 bg-slate-900/80 px-2.5 py-2 space-y-1.5">
-                  <div className="flex items-center justify-between gap-2 text-[11px]">
-                    <div className="flex items-center gap-1.5 font-semibold text-slate-200">
-                      <Coins className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-                      <span>Confidence Bet</span>
-                    </div>
-                    <span className="rounded-full border border-amber-400/30 bg-amber-400/15 px-2 py-0.5 font-mono text-[10px] font-bold text-amber-300">
-                      {safeChips.toLocaleString()} chips
-                    </span>
-                  </div>
-
-                  {safeChips === 0 && (
-                    <div className="text-[10px] text-slate-400">
-                      0 chips — free guess (0 wager)
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="range"
-                      aria-label="Confidence wager slider"
-                      min={0}
-                      max={safeChips}
-                      step={1}
-                      value={clampedWager}
-                      disabled={submitting || safeChips === 0}
-                      onChange={(e) =>
-                        setWager(clampWager(Number(e.target.value), safeChips))
-                      }
-                      className="h-1.5 flex-1 cursor-pointer accent-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
-                    />
-                    <input
-                      type="number"
-                      aria-label="Confidence wager amount"
-                      min={0}
-                      max={safeChips}
-                      step={1}
-                      value={clampedWager}
-                      disabled={submitting || safeChips === 0}
-                      onChange={(e) => {
-                        const raw = e.target.value;
-                        if (raw === '') {
-                          setWager(0);
-                          return;
-                        }
-                        setWager(clampWager(Number(raw), safeChips));
-                      }}
-                      className="w-16 rounded-lg border border-white/15 bg-slate-950 px-2 py-0.5 text-right font-mono text-[11px] font-semibold text-amber-300 focus:border-amber-400/60 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-5 gap-1">
-                    {presets.map((preset) => {
-                      const isActive =
-                        !preset.optionDisabled && clampedWager === preset.value;
-                      return (
-                        <button
-                          key={preset.label}
-                          type="button"
-                          disabled={submitting || preset.optionDisabled}
-                          onClick={() =>
-                            setWager(clampWager(preset.value, safeChips))
-                          }
-                          className={`rounded-md border px-1 py-0.5 text-[10px] font-semibold transition ${
-                            isActive
-                              ? 'border-amber-400/60 bg-amber-400/20 text-amber-200'
-                              : 'border-white/10 bg-slate-950/80 text-slate-300 hover:bg-slate-800'
-                          } disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-slate-950/80`}
-                        >
-                          {preset.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
               <button
                 type="button"
-                disabled={!selectedCoords || submitting}
-                onClick={handleSubmit}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-3 py-2 text-xs font-bold text-slate-950 shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
+                onClick={() => setPinnedOpen((p) => !p)}
+                title={pinnedOpen ? 'Unpin map size' : 'Pin map expanded'}
+                className={`grid h-8 w-8 place-items-center rounded-lg border transition ${
+                  pinnedOpen
+                    ? 'border-[#22c55e] bg-[#22c55e]/20 text-[#22c55e]'
+                    : 'border-white/15 bg-[#0b1020]/85 text-[#eef1f8] hover:bg-[#18223a]'
+                }`}
               >
-                <Flag className="h-3.5 w-3.5" />
-                <span>
-                  {submitting
-                    ? 'Submitting...'
-                    : selectedCoords
-                      ? bettingEnabled
-                        ? `Submit Guess · Wager ${clampedWager.toLocaleString()}`
-                        : 'Submit Guess'
-                      : 'Click Map to Drop Pin'}
-                </span>
+                <Pin className="h-3.5 w-3.5" />
               </button>
-            </>
-          )}
-        </div>
+              <button
+                type="button"
+                onClick={() => setCollapsed(true)}
+                title="Collapse map"
+                className="grid h-8 w-8 place-items-center rounded-lg bg-[#0b1020]/85 text-[#eef1f8] border border-white/15 hover:bg-[#18223a] transition"
+              >
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Footer: Optional Betting + Big Guess CTA */}
+          <div className="border-t border-white/10 bg-[#0b1020]/90 p-3 flex flex-col gap-2.5">
+            {hasGuessed ? (
+              <div className="flex w-full items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2 text-sm text-[#22c55e] font-semibold">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  <span className="truncate">
+                    Guess locked
+                    {bettingEnabled
+                      ? ` · ${lockedWager.toLocaleString()} chips`
+                      : ''}
+                    {waitingSummaryText ? ` · ${waitingSummaryText}` : ''}
+                  </span>
+                </div>
+                {waitingCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={onForceEndRound}
+                    className="shrink-0 rounded-xl border border-amber-400/40 bg-amber-500/15 px-3 py-1.5 text-xs font-bold text-amber-200 hover:bg-amber-500/25 transition"
+                  >
+                    End round now
+                  </button>
+                )}
+              </div>
+            ) : (
+              <>
+                {bettingEnabled && (
+                  <div className="rounded-xl border border-white/10 bg-[#121a2e] px-3 py-2 space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="flex items-center gap-1.5 font-semibold text-white">
+                        <Coins className="h-3.5 w-3.5 text-[#fbbf24]" />
+                        <span>Wager</span>
+                      </span>
+                      <span className="font-mono text-xs font-bold text-[#fbbf24]">
+                        {safeChips.toLocaleString()} chips
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="range"
+                        aria-label="Confidence wager slider"
+                        min={0}
+                        max={safeChips}
+                        step={1}
+                        value={clampedWager}
+                        disabled={submitting || safeChips === 0}
+                        onChange={(e) =>
+                          setWager(clampWager(Number(e.target.value), safeChips))
+                        }
+                        className="h-1.5 flex-1 cursor-pointer accent-[#22c55e] disabled:opacity-40"
+                      />
+                      <input
+                        type="number"
+                        aria-label="Confidence wager amount"
+                        min={0}
+                        max={safeChips}
+                        step={1}
+                        value={clampedWager}
+                        disabled={submitting || safeChips === 0}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (raw === '') {
+                            setWager(0);
+                            return;
+                          }
+                          setWager(clampWager(Number(raw), safeChips));
+                        }}
+                        className="w-16 rounded-lg border border-white/15 bg-[#0b1020] px-2 py-0.5 text-right font-mono text-xs font-bold text-[#fbbf24] focus:border-[#22c55e] focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-5 gap-1">
+                      {presets.map((preset) => {
+                        const isActive =
+                          !preset.optionDisabled && clampedWager === preset.value;
+                        return (
+                          <button
+                            key={preset.label}
+                            type="button"
+                            disabled={submitting || preset.optionDisabled}
+                            onClick={() =>
+                              setWager(clampWager(preset.value, safeChips))
+                            }
+                            className={`rounded-md border px-1 py-0.5 text-[11px] font-semibold transition ${
+                              isActive
+                                ? 'border-[#22c55e] bg-[#22c55e]/20 text-white'
+                                : 'border-white/10 bg-[#0b1020] text-[#8d97ae] hover:text-white'
+                            } disabled:opacity-40`}
+                          >
+                            {preset.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  disabled={!selectedCoords || submitting}
+                  onClick={handleSubmit}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#22c55e] px-4 py-3.5 text-[16px] font-bold text-[#052e14] shadow-[0_8px_24px_rgba(34,197,94,0.25)] hover:bg-[#34d369] disabled:bg-[#18223a] disabled:text-[#8d97ae] disabled:shadow-none transition"
+                >
+                  <MapPin className="h-4 w-4" />
+                  <span>
+                    {submitting
+                      ? 'Submitting…'
+                      : selectedCoords
+                        ? bettingEnabled
+                          ? `Guess · Wager ${clampedWager.toLocaleString()}`
+                          : 'Guess'
+                        : 'Click map to place pin'}
+                  </span>
+                  {selectedCoords && !submitting && (
+                    <span className="ml-1 rounded border border-black/25 px-1.5 py-0.5 text-[11px] font-semibold opacity-75">
+                      Space
+                    </span>
+                  )}
+                </button>
+              </>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

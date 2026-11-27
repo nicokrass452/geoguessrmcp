@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Round result – draft</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { overflow: hidden; }
+  .map { position: fixed; inset: 0; }
+  .map-inner { left: -1427px; top: -144px; width: 4000px; height: 2000px; }
+  svg.lines { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .panel { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); width: 900px; padding: 24px 28px; background: rgba(18,26,46,.95); backdrop-filter: blur(10px); }
+  .head { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+  .place small { color: var(--muted); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; }
+  .place h1 { margin: 2px 0 0; font-size: 30px; letter-spacing: -0.02em; }
+  .you { text-align: right; }
+  .you .pts { font-size: 40px; font-weight: 800; color: var(--accent); line-height: 1; }
+  .you .km { color: var(--muted); font-size: 15px; margin-top: 4px; }
+  .bar { height: 10px; background: #26314b; border-radius: 99px; margin: 18px 0; overflow: hidden; }
+  .bar div { height: 100%; width: 82%; background: linear-gradient(90deg,#16a34a,#4ade80); border-radius: 99px; }
+  .rows { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .r { background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; }
+  .r .avatar { width: 30px; height: 30px; font-size: 11px; }
+  .r b { display: block; font-size: 14px; }
+  .r span { font-size: 12px; color: var(--muted); }
+  .r.me { border-color: rgba(96,165,250,.6); }
+  .actions { display: flex; justify-content: space-between; align-items: center; margin-top: 18px; }
+  .top { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); padding: 8px 18px; font-weight: 700; background: rgba(11,16,32,.8); border-radius: 999px; border: 1px solid var(--line-2); }
+</style></head>
+<body>
+  <div class="map">
+    <div class="map-inner"></div>
+    <svg class="lines">
+      <line x1="700" y1="330" x2="790" y2="360" stroke="#60a5fa" stroke-width="3" stroke-dasharray="7 6"/>
+      <line x1="700" y1="330" x2="660" y2="250" stroke="#a78bfa" stroke-width="3" stroke-dasharray="7 6"/>
+      <line x1="700" y1="330" x2="560" y2="430" stroke="#f59e0b" stroke-width="3" stroke-dasharray="7 6"/>
+      <line x1="700" y1="330" x2="910" y2="230" stroke="#f472b6" stroke-width="3" stroke-dasharray="7 6"/>
+    </svg>
+    <div class="flag" style="left:700px;top:330px">★</div>
+    <div class="marker" style="left:790px;top:360px;background:var(--you)">CP</div>
+    <div class="marker" style="left:660px;top:250px;background:var(--gemini)">G</div>
+    <div class="marker" style="left:560px;top:430px;background:var(--claude)">C</div>
+    <div class="marker" style="left:910px;top:230px;background:#f472b6">MI</div>
+  </div>
+
+  <div class="top">Round 2 of 5</div>
+
+  <div class="card panel">
+    <div class="head">
+      <div class="place"><small>📍 The location was</small><h1>Innsbruck, Austria</h1></div>
+      <div class="you"><div class="pts">+4,120</div><div class="km">You were 186 km away</div></div>
+    </div>
+    <div class="bar"><div></div></div>
+    <div class="rows">
+      <div class="r"><div class="avatar" style="background:var(--gemini)">G</div><div><b>1. Gemini</b><span>92 km · 4,610</span></div></div>
+      <div class="r me"><div class="avatar" style="background:var(--you)">CP</div><div><b>2. You</b><span>186 km · 4,120</span></div></div>
+      <div class="r"><div class="avatar" style="background:var(--claude)">C</div><div><b>3. Claude</b><span>540 km · 2,980</span></div></div>
+      <div class="r"><div class="avatar" style="background:#f472b6">MI</div><div><b>4. Mia</b><span>810 km · 2,140</span></div></div>
+    </div>
+    <div class="actions">
+      <span class="muted" style="font-size:14px">💬 See how the AIs reasoned ▾</span>
+      <span class="btn btn-primary btn-lg">Next round →</span>
+    </div>
+  </div>
+
+  <div class="note" style="top:120px;left:1080px;max-width:230px">Map fills the screen. Your result is the headline; everyone else in one compact row. AI reasoning collapsed.</div>
+</body></html>
+

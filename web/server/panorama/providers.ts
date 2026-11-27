@@ -272,14 +272,12 @@ export class PanoramaProviderManager {
     for (let offset = 0; offset < 8; offset += 4) {
       const batch = pool.slice(offset, offset + 4);
       if (batch.length === 0) break;
-      const controller = new AbortController();
       try {
         const winner = await Promise.any(
           batch.map(async (seed) => {
             const scene = await this.tryFetchMapillarySeedScene(
               seed,
-              fallbackLocation,
-              controller.signal
+              fallbackLocation
             );
             if (!scene) {
               throw new Error(`No 360 scene in ${seed.city}`);
@@ -287,10 +285,9 @@ export class PanoramaProviderManager {
             return scene;
           })
         );
-        controller.abort();
         return winner;
       } catch {
-        controller.abort();
+        // try next batch
       }
     }
 
@@ -300,8 +297,7 @@ export class PanoramaProviderManager {
 
   private async tryFetchMapillarySeedScene(
     seed: MapillaryWorldSeed,
-    fallbackLocation: CatalogLocation,
-    parentSignal?: AbortSignal
+    fallbackLocation: CatalogLocation
   ): Promise<BuiltRoundScene | null> {
     try {
       // Mountain valley roads use tighter jitter & wider bbox than urban grids
@@ -319,11 +315,7 @@ export class PanoramaProviderManager {
         this.config.mapillaryAccessToken
       )}&fields=id,computed_geometry,compass_angle,thumb_2048_url,sequence&bbox=${bbox}&is_pano=true&limit=6`;
 
-      const timeoutSig = AbortSignal.timeout(10000);
-      const signal = parentSignal
-        ? AbortSignal.any([parentSignal, timeoutSig])
-        : timeoutSig;
-      const res = await fetch(url, { signal });
+      const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
       if (!res.ok) {
         console.warn(`[Mapillary] Graph API returned HTTP ${res.status} for ${seed.city}`);
         return null;

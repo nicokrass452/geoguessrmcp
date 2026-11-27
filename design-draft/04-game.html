@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>In game – draft</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { overflow: hidden; background: #000; }
+  .pano { position: fixed; inset: 0; background: linear-gradient(#7fb2e5 0%, #bcd8f0 48%, #9aa38a 50%, #6b7458 100%); }
+  .pano svg { position: absolute; left: 0; bottom: 42%; width: 100%; height: 260px; }
+  .road { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); width: 900px; height: 50%; background: linear-gradient(#5d5f63, #3a3b3e); clip-path: polygon(47% 0, 53% 0, 100% 100%, 0 100%); }
+  .road::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 8px; transform: translateX(-50%); background: repeating-linear-gradient(#f5f5f5 0 40px, transparent 40px 90px); clip-path: polygon(45% 0,55% 0,100% 100%,0 100%); }
+  .arrow { position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%); width: 70px; height: 70px; border-radius: 50%; background: rgba(0,0,0,.35); border: 2px solid rgba(255,255,255,.8); display: grid; place-items: center; font-size: 28px; color: #fff; }
+
+  .glass { background: rgba(11,16,32,.78); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,.12); border-radius: 14px; }
+  .top { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); display: flex; align-items: stretch; }
+  .stat { padding: 10px 22px; text-align: center; border-right: 1px solid rgba(255,255,255,.1); }
+  .stat:last-child { border-right: 0; }
+  .stat small { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; font-weight: 700; }
+  .stat b { font-size: 22px; }
+  .menu { position: fixed; top: 16px; left: 16px; display: flex; gap: 8px; }
+  .menu .glass { padding: 10px 14px; font-weight: 600; font-size: 14px; }
+  .room { position: fixed; top: 16px; right: 16px; padding: 10px 14px; font-size: 14px; }
+
+  .players { position: fixed; top: 92px; left: 16px; width: 230px; padding: 10px; }
+  .pl { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 10px; }
+  .pl .avatar { width: 32px; height: 32px; font-size: 12px; }
+  .pl .n { flex: 1; font-size: 14px; font-weight: 600; }
+  .pl .s { font-size: 12px; }
+  .ok { color: var(--accent); }
+  .think { color: var(--muted); }
+
+  .controls { position: fixed; left: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .controls .glass { width: 44px; height: 44px; display: grid; place-items: center; font-size: 18px; color: #fff; }
+  .compass { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); padding: 8px 18px; font-family: Consolas, monospace; letter-spacing: .3em; font-size: 13px; color: #cfd6e6; }
+  .compass b { color: #f87171; }
+
+  .guess { position: fixed; right: 16px; bottom: 16px; width: 460px; overflow: hidden; padding: 0; }
+  .guess .map { height: 290px; }
+  .guess .map-inner { inset: -40px -60px; }
+  .guess .foot { padding: 12px; display: flex; gap: 10px; align-items: center; }
+  .guess .foot .btn { flex: 1; padding: 14px; font-size: 16px; }
+  .mini { position: absolute; top: 8px; right: 8px; display: flex; gap: 6px; }
+  .mini span { width: 30px; height: 30px; border-radius: 8px; background: rgba(11,16,32,.8); display: grid; place-items: center; font-size: 13px; }
+  .key { font-size: 11px; padding: 2px 6px; border-radius: 5px; border: 1px solid rgba(0,0,0,.25); margin-left: 6px; opacity: .7; }
+</style></head>
+<body>
+  <div class="pano">
+    <svg viewBox="0 0 1440 260" preserveAspectRatio="none">
+      <path d="M0 260 L0 150 L120 80 L230 140 L340 40 L470 150 L600 70 L720 130 L860 20 L1000 140 L1120 60 L1260 150 L1440 90 L1440 260Z" fill="#6f7f93"/>
+      <path d="M0 260 L0 200 L180 150 L320 210 L520 160 L700 220 L900 170 L1100 215 L1300 160 L1440 200 L1440 260Z" fill="#55704a"/>
+    </svg>
+    <div class="road"></div>
+    <div class="arrow">↑</div>
+  </div>
+
+  <div class="menu"><div class="glass">☰ Menu</div></div>
+
+  <div class="top glass">
+    <div class="stat"><small>Round</small><b>2 / 5</b></div>
+    <div class="stat"><small>Time</small><b style="color:var(--amber)">0:42</b></div>
+    <div class="stat"><small>Score</small><b>4,213</b></div>
+  </div>
+
+  <div class="room glass">Room <b class="mono">K7Q2XM</b> · 🔗</div>
+
+  <div class="players glass">
+    <div class="pl"><div class="avatar" style="background:var(--you)">CP</div><span class="n">You</span><span class="s think">exploring</span></div>
+    <div class="pl"><div class="avatar" style="background:var(--gemini)">G</div><span class="n">Gemini</span><span class="s ok">✓ guessed</span></div>
+    <div class="pl"><div class="avatar" style="background:var(--claude)">C</div><span class="n">Claude</span><span class="s think">thinking…</span></div>
+    <div class="pl"><div class="avatar" style="background:#f472b6">MI</div><span class="n">Mia</span><span class="s think">exploring</span></div>
+  </div>
+
+  <div class="controls">
+    <div class="glass" title="Back to start">⟲</div>
+    <div class="glass">＋</div>
+    <div class="glass">－</div>
+  </div>
+
+  <div class="compass glass">W · · <b>N</b> · · E</div>
+
+  <div class="guess glass">
+    <div class="map">
+      <div class="map-inner"></div>
+      <div class="pin" style="left:230px;top:118px"><div class="head" style="background:var(--you)"></div></div>
+      <div class="mini"><span>⤢</span><span>📌</span></div>
+    </div>
+    <div class="foot">
+      <span class="btn btn-primary">📍 Guess <span class="key">Space</span></span>
+    </div>
+  </div>
+
+  <div class="note" style="top:96px;left:560px;max-width:320px">Only 3 numbers on top. Removed: provider name, "Live Sync", MCP badge, mode tag.</div>
+  <div class="note" style="top:300px;left:260px;max-width:200px">Simple "who has guessed" list instead of heading° / zoom / call counts. AI debug → expandable.</div>
+  <div class="note" style="top:440px;left:1000px;max-width:200px">Bigger map, big Guess button, keyboard shortcut.</div>
+</body></html>

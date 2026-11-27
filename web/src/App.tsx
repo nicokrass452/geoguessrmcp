@@ -1,20 +1,37 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  Check,
-  Clock,
-  Copy,
-  Home,
-  Link2,
-  Play,
-  User,
-  Users,
-} from 'lucide-react';
 import type {
   HealthInfo,
   MoveDirection,
   PublicGameState,
 } from '@geoguessr-mcp/shared';
 import { api, type StartMatchPayload } from './lib/api';
+import {
+  clearSavedRoomSession,
+  getAutoJoinPlayerName,
+  getSessionPlayerId,
+  getSessionPlayerName,
+  getSessionToken,
+  getSessionViewMode,
+  getUrlRoomCode,
+  restoreRoomSessionToTab,
+  saveRoomSession,
+  setSessionPlayerName,
+  setSessionViewMode,
+  syncUrlRoomCode,
+} from './lib/playerSession';
+import { saveLastGameSummary } from './lib/uiHelpers';
+import { useGameSocket } from './lib/useGameSocket';
+import { AgentHud } from './components/AgentHud';
+import { FinalLeaderboardModal } from './components/FinalLeaderboardModal';
+import { GuessingMiniMap } from './components/GuessingMiniMap';
+import { LobbyModal } from './components/LobbyModal';
+import { PanoramaViewer } from './components/PanoramaViewer';
+import { RoundSummaryOverlay } from './components/RoundSummaryOverlay';
+import { SettingsModal } from './components/SettingsModal';
+import { SpectatorStage } from './components/SpectatorStage';
+import { TopHud } from './components/TopHud';
+import { WaitingRoomLobby } from './components/WaitingRoomLobby';
+import { WelcomeHub } from './components/WelcomeHub';
 
 function mergeHttpState(
   prev: PublicGameState | null,
@@ -35,32 +52,6 @@ function mergeHttpState(
   }
   return next;
 }
-import {
-  buildRoomInviteUrl,
-  clearSavedRoomSession,
-  copyTextToClipboard,
-  getAutoJoinPlayerName,
-  getSessionPlayerId,
-  getSessionPlayerName,
-  getSessionToken,
-  getSessionViewMode,
-  getUrlRoomCode,
-  restoreRoomSessionToTab,
-  saveRoomSession,
-  setSessionPlayerName,
-  setSessionViewMode,
-  syncUrlRoomCode,
-} from './lib/playerSession';
-import { useGameSocket } from './lib/useGameSocket';
-import { AgentHud } from './components/AgentHud';
-import { FinalLeaderboardModal } from './components/FinalLeaderboardModal';
-import { GuessingMiniMap } from './components/GuessingMiniMap';
-import { LobbyModal } from './components/LobbyModal';
-import { PanoramaViewer } from './components/PanoramaViewer';
-import { RoundSummaryOverlay } from './components/RoundSummaryOverlay';
-import { SpectatorStage } from './components/SpectatorStage';
-import { TopHud } from './components/TopHud';
-import { WelcomeHub } from './components/WelcomeHub';
 
 export default function App() {
   const {
@@ -81,25 +72,13 @@ export default function App() {
   );
   const [health, setHealth] = useState<HealthInfo | null>(null);
   const [showSetup, setShowSetup] = useState(false);
+  const [showDeveloperModal, setShowDeveloperModal] = useState(false);
   const [busyAction, setBusyAction] = useState(false);
-  const [copiedCode, setCopiedCode] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
   const [autoJoiningCode, setAutoJoiningCode] = useState<string | null>(() =>
     getUrlRoomCode()
   );
-  const [lobbyNameDraft, setLobbyNameDraft] = useState<string>(() =>
-    getSessionPlayerName()
-  );
   const handledUrlRoomRef = useRef<string | null>(null);
-  const copyCodeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const copyLinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (copyCodeTimerRef.current) clearTimeout(copyCodeTimerRef.current);
-      if (copyLinkTimerRef.current) clearTimeout(copyLinkTimerRef.current);
-    };
-  }, []);
+  const savedFinishMatchRef = useRef<string | null>(null);
 
   const setView = useCallback((next: 'home' | 'arena') => {
     setSessionViewMode(next);
@@ -111,11 +90,29 @@ export default function App() {
     api.getHealth().then(setHealth).catch(() => {});
   }, [health, wsConnected]);
 
+  // Save last game summary for Home screen footer
   useEffect(() => {
-    if (state?.human?.name) {
-      setLobbyNameDraft(state.human.name);
+    if (
+      state?.matchStatus === 'finished' &&
+      state.leaderboard.length > 0 &&
+      savedFinishMatchRef.current !== state.matchId
+    ) {
+      savedFinishMatchRef.current = state.matchId;
+      const targetEntry =
+        state.mode === 'spectator'
+          ? state.leaderboard[0]
+          : state.leaderboard.find((e) => e.playerId === state.human.id) ??
+            state.leaderboard[0];
+      if (targetEntry) {
+        saveLastGameSummary({
+          score: targetEntry.totalScore,
+          rank: targetEntry.rank,
+          totalPlayers: state.leaderboard.length,
+          savedAt: new Date().toISOString(),
+        });
+      }
     }
-  }, [state?.matchId, state?.roomCode, state?.human?.name]);
+  }, [state]);
 
   useEffect(() => {
     if (getSessionToken() || getUrlRoomCode()) return;
@@ -169,7 +166,6 @@ export default function App() {
       }
       const joinName = restored?.playerName || getAutoJoinPlayerName();
       setSessionPlayerName(joinName);
-      setLobbyNameDraft(joinName);
       api
         .joinRoom(urlCode, joinName, activePlayerId, {
           preserveExistingName: true,
@@ -191,7 +187,6 @@ export default function App() {
           setRoomCode(joined.roomCode);
           syncUrlRoomCode(joined.roomCode);
           setState(joined.state);
-          setLobbyNameDraft(joined.state.human.name);
           setShowSetup(false);
           setError(null);
           setView('arena');
@@ -318,7 +313,6 @@ export default function App() {
         setRoomCode(next.roomCode);
         syncUrlRoomCode(next.roomCode);
         setState(next);
-        setLobbyNameDraft(next.human.name);
         setShowSetup(false);
         setView('arena');
       } catch (err) {
@@ -355,7 +349,6 @@ export default function App() {
         setRoomCode(created.roomCode);
         syncUrlRoomCode(created.roomCode);
         setState(created.state);
-        setLobbyNameDraft(created.state.human.name);
         setShowSetup(false);
         setView('arena');
       } catch (err) {
@@ -388,7 +381,6 @@ export default function App() {
         setRoomCode(joined.roomCode);
         syncUrlRoomCode(joined.roomCode);
         setState(joined.state);
-        setLobbyNameDraft(joined.state.human.name);
         setShowSetup(false);
         setView('arena');
       } catch (err) {
@@ -426,6 +418,7 @@ export default function App() {
     syncUrlRoomCode(null);
     setRoomCode(null);
     setShowSetup(false);
+    setShowDeveloperModal(false);
     setError(null);
     setView('home');
   }, [state?.roomCode, roomCode, playerId, setRoomCode, setError, setView]);
@@ -441,23 +434,22 @@ export default function App() {
   // 0. Auto-Joining Room via URL Link (?room=CODE)
   if (autoJoiningCode) {
     return (
-      <div className="flex h-full w-full flex-col items-center justify-center bg-slate-950 text-slate-200 gap-3">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-400 border-t-transparent" />
-        <p className="text-sm font-semibold text-slate-200">
-          Joining Room{' '}
-          <span className="font-mono text-emerald-400">{autoJoiningCode}</span>
-          ...
+      <div className="geo-bg flex h-full w-full flex-col items-center justify-center text-[#eef1f8] gap-3">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#22c55e] border-t-transparent" />
+        <p className="text-sm font-semibold">
+          Joining room{' '}
+          <span className="font-mono text-[#22c55e]">{autoJoiningCode}</span>…
         </p>
       </div>
     );
   }
 
-  // 1. Welcome Hub View
+  // 1. Welcome Hub View (Home + Setup)
   if (view === 'home') {
     return (
       <WelcomeHub
         initialHumanName={
-          state?.human.name || getSessionPlayerName() || 'You (Player)'
+          state?.human.name || getSessionPlayerName() || 'You'
         }
         initialProvider={state?.provider || health?.defaultProvider || 'auto'}
         health={health}
@@ -476,11 +468,9 @@ export default function App() {
   // 2. Loading Backend State
   if (!state) {
     return (
-      <div className="flex h-full w-full flex-col items-center justify-center bg-slate-950 text-slate-200 gap-3">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-sky-400 border-t-transparent" />
-        <p className="text-sm text-slate-400">
-          Connecting to GeoGuessr MCP Arena backend...
-        </p>
+      <div className="geo-bg flex h-full w-full flex-col items-center justify-center text-[#eef1f8] gap-3">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#22c55e] border-t-transparent" />
+        <p className="text-sm text-[#8d97ae]">Connecting to GeoArena…</p>
         {error && (
           <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-xs text-rose-300">
             {error}
@@ -492,9 +482,9 @@ export default function App() {
             syncUrlRoomCode(null);
             setView('home');
           }}
-          className="mt-2 rounded-xl border border-white/15 bg-slate-900 px-4 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800"
+          className="mt-2 rounded-xl border border-white/15 bg-[#121a2e] px-4 py-2 text-sm font-semibold text-white hover:bg-[#18223a]"
         >
-          Return to Welcome Hub
+          Back to home
         </button>
       </div>
     );
@@ -504,244 +494,65 @@ export default function App() {
     !state.hostPlayerId ||
     state.hostPlayerId === playerId ||
     state.human.isHost === true;
-  const showAgentHud = state.mode !== 'solo' && state.mode !== 'pvp';
+  const showAiControls = state.mode !== 'solo' && state.mode !== 'pvp';
+  const isMultiHuman =
+    state.mode === 'pvp' ||
+    state.mode === 'pvp_ai' ||
+    state.humans.length > 1;
+  const showPlayersList =
+    state.mode !== 'spectator' && (showAiControls || isMultiHuman);
 
-  // 3. Multi-Human Waiting Room Lobby (before Host clicks Start Match)
+  // 3. Multi-Human Waiting Room Lobby
   if (state.matchStatus === 'lobby') {
-    const inviteUrl = state.roomCode ? buildRoomInviteUrl(state.roomCode) : '';
-    const trimmedDraft = lobbyNameDraft.trim();
-    const canRename =
-      trimmedDraft.length > 0 && trimmedDraft !== state.human.name;
-
     return (
-      <main className="flex h-full w-full flex-col overflow-y-auto overflow-x-hidden page-scrollbar bg-slate-950 p-4 sm:p-6 text-slate-100">
-        <div className="m-auto w-full max-w-xl rounded-3xl border border-white/15 bg-slate-900 p-5 sm:p-6 shadow-2xl space-y-5">
-          <div className="flex items-center justify-between border-b border-white/10 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-300">
-                <Users className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 className="text-lg font-extrabold text-white">
-                  Multiplayer Room Lobby ({state.mode.toUpperCase()})
-                </h2>
-                <p className="text-xs text-slate-400">
-                  Share the invite link for instant auto-join, or share the room
-                  code to join manually
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              data-testid="quick-return-home"
-              onClick={handleReturnHome}
-              className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-700"
-            >
-              <Home className="h-3.5 w-3.5 text-sky-400" />
-              <span>Home</span>
-            </button>
-          </div>
-
-          <div className="rounded-2xl border border-emerald-400/30 bg-slate-950 p-4 sm:px-5 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-2.5">
-                <div>
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                    Room Code
-                  </div>
-                  <div
-                    data-testid="room-code"
-                    aria-label={`Room Code ${state.roomCode}`}
-                    className="mt-0.5 font-mono text-2xl font-extrabold tracking-widest text-emerald-400 select-all"
-                  >
-                    {state.roomCode}
-                  </div>
-                </div>
-                {state.roomCode && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void copyTextToClipboard(state.roomCode || '').then(
-                          (ok) => {
-                            if (!ok) return;
-                            setCopiedCode(true);
-                            if (copyCodeTimerRef.current) {
-                              clearTimeout(copyCodeTimerRef.current);
-                            }
-                            copyCodeTimerRef.current = setTimeout(
-                              () => setCopiedCode(false),
-                              1800
-                            );
-                          }
-                        );
-                      }}
-                      className="flex items-center gap-1.5 rounded-xl border border-white/15 bg-slate-900 px-3 py-1.5 text-xs font-bold text-slate-200 hover:border-emerald-400/50 hover:bg-slate-800 transition"
-                    >
-                      {copiedCode ? (
-                        <>
-                          <Check className="h-3.5 w-3.5 text-emerald-400" />
-                          <span className="text-emerald-300">Code Copied</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="h-3.5 w-3.5 text-slate-400" />
-                          <span>Copy Code</span>
-                        </>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      data-testid="copy-invite-link"
-                      onClick={() => {
-                        void copyTextToClipboard(inviteUrl).then((ok) => {
-                          if (!ok) return;
-                          setCopiedLink(true);
-                          if (copyLinkTimerRef.current) {
-                            clearTimeout(copyLinkTimerRef.current);
-                          }
-                          copyLinkTimerRef.current = setTimeout(
-                            () => setCopiedLink(false),
-                            1800
-                          );
-                        });
-                      }}
-                      className="flex items-center gap-1.5 rounded-xl border border-emerald-400/45 bg-emerald-500/20 px-3 py-1.5 text-xs font-bold text-emerald-200 hover:bg-emerald-500/30 transition"
-                    >
-                      {copiedLink ? (
-                        <>
-                          <Check className="h-3.5 w-3.5 text-emerald-300" />
-                          <span>Link Copied!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Link2 className="h-3.5 w-3.5 text-emerald-300" />
-                          <span>Copy Invite Link</span>
-                        </>
-                      )}
-                    </button>
-                  </>
-                )}
-              </div>
-              <div className="text-right text-xs text-slate-400">
-                <div>{state.totalRounds} Rounds</div>
-                <div>
-                  {state.locationMode === 'big_cities'
-                    ? 'Big Cities Only'
-                    : state.locationMode === 'mountain_regions'
-                      ? 'Mountain Regions Only'
-                      : 'Standard'}
-                </div>
-              </div>
-            </div>
-
-            {inviteUrl && (
-              <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-900/80 px-3 py-2 text-[11px] font-mono text-sky-300 overflow-x-auto custom-scrollbar">
-                <Link2 className="h-3.5 w-3.5 shrink-0 text-sky-400" />
-                <span className="select-all whitespace-nowrap">{inviteUrl}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Inline Display Name Customizer (especially handy after URL auto-join) */}
-          <div className="flex items-end gap-2">
-            <div className="flex-1">
-              <label
-                htmlFor="lobby-display-name"
-                className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-400"
-              >
-                Your Display Name
-              </label>
-              <input
-                id="lobby-display-name"
-                type="text"
-                maxLength={40}
-                value={lobbyNameDraft}
-                onChange={(e) => setLobbyNameDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && canRename && state.roomCode) {
-                    handleJoinRoom(state.roomCode, trimmedDraft);
-                  }
-                }}
-                className="w-full rounded-xl border border-white/15 bg-slate-950 px-3 py-2 text-xs text-white focus:border-sky-400 focus:outline-none"
-              />
-            </div>
-            <button
-              type="button"
-              disabled={!canRename || busyAction || !state.roomCode}
-              onClick={() => {
-                if (state.roomCode && canRename) {
-                  handleJoinRoom(state.roomCode, trimmedDraft);
-                }
-              }}
-              className="rounded-xl border border-sky-400/40 bg-sky-500/20 px-3.5 py-2 text-xs font-bold text-sky-200 hover:bg-sky-500/30 disabled:opacity-40 transition"
-            >
-              Update Name
-            </button>
-          </div>
-
-          <div className="space-y-2">
-            <div className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Connected Human Players ({state.humans.length})
-            </div>
-            <div className="space-y-2">
-              {state.humans.map((h) => (
-                <div
-                  key={h.id}
-                  className="flex items-center justify-between rounded-xl border border-white/10 bg-slate-950/70 px-4 py-2.5"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <span
-                      className="h-3 w-3 rounded-full"
-                      style={{ backgroundColor: h.color }}
-                    />
-                    <User className="h-4 w-4 text-sky-400" />
-                    <span className="text-sm font-bold text-white">
-                      {h.name}
-                    </span>
-                    {h.id === playerId && (
-                      <span className="rounded bg-sky-500/20 px-1.5 py-0.5 text-[10px] font-bold text-sky-300">
-                        You
-                      </span>
-                    )}
-                  </div>
-                  {h.isHost && (
-                    <span className="rounded-full border border-amber-400/30 bg-amber-500/15 px-2.5 py-0.5 text-[10px] font-bold text-amber-300">
-                      Host
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-end gap-3 border-t border-white/10 pt-4">
-            {isHost ? (
-              <button
-                type="button"
-                data-testid="lobby-start-match"
-                disabled={busyAction}
-                onClick={handleStartWaitingRoom}
-                className="flex items-center gap-2 rounded-2xl bg-emerald-500 px-6 py-3 text-sm font-extrabold text-slate-950 hover:bg-emerald-400 disabled:opacity-50 transition"
-              >
-                <Play className="h-4 w-4 fill-current" />
-                <span>{busyAction ? 'Starting...' : 'Start Match'}</span>
-              </button>
-            ) : (
-              <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-800/80 px-4 py-2.5 text-xs font-semibold text-slate-300">
-                <Clock className="h-4 w-4 text-amber-400" />
-                <span>Waiting for host to start match...</span>
-              </div>
-            )}
-          </div>
-        </div>
-      </main>
+      <>
+        <WaitingRoomLobby
+          state={state}
+          playerId={playerId}
+          isHost={isHost}
+          busyAction={busyAction}
+          onStartMatch={handleStartWaitingRoom}
+          onLeaveRoom={handleReturnHome}
+          onRenamePlayer={(nextName) => {
+            if (state.roomCode) {
+              void handleJoinRoom(state.roomCode, nextName);
+            }
+          }}
+          onOpenEditRules={() => setShowSetup(true)}
+          onError={setError}
+        />
+        {showSetup && (
+          <LobbyModal
+            initialMode={state.mode}
+            initialLocationMode={state.locationMode}
+            initialBettingEnabled={state.bettingEnabled}
+            initialRounds={state.totalRounds}
+            initialDuration={state.roundDurationSec}
+            initialProvider={state.provider}
+            initialHumanName={state.human.name}
+            agyRunner={state.agyRunner}
+            health={health}
+            starting={busyAction}
+            onStart={(opts) => {
+              if (opts.mode === 'pvp' || opts.mode === 'pvp_ai') {
+                void handleCreateRoom({ ...opts, autoStart: false });
+              } else {
+                void handleStartNewMatch(opts);
+              }
+            }}
+            onClose={() => setShowSetup(false)}
+          />
+        )}
+      </>
     );
   }
 
   // 4. Active Arena / Spectator Stage
+  const allowAiForPlayAgain = state.mode !== 'solo' && state.mode !== 'pvp';
+  const playAgainModels = state.agyRunner?.selectedModels ?? [];
+
   return (
-    <main className="relative h-full w-full overflow-hidden bg-slate-950">
+    <main className="relative h-full w-full overflow-hidden bg-[#0b1020]">
       {state.mode === 'spectator' ? (
         <SpectatorStage
           roundNumber={state.currentRoundNumber}
@@ -779,15 +590,21 @@ export default function App() {
         state={state}
         wsConnected={wsConnected}
         onOpenSettings={() => setShowSetup(true)}
+        onOpenDeveloper={() => setShowDeveloperModal(true)}
         onReturnHome={handleReturnHome}
       />
 
-      {showAgentHud && (
+      {showPlayersList && (
         <AgentHud
           agents={state.agents}
+          humans={state.humans}
+          selfPlayerId={state.human.id}
+          isSpectator={false}
+          showAiControls={showAiControls}
           activityFeed={state.activityFeed}
           agyRunner={state.agyRunner}
           roundStatus={state.roundStatus}
+          onOpenDeveloper={() => setShowDeveloperModal(true)}
           onError={setError}
         />
       )}
@@ -812,12 +629,12 @@ export default function App() {
         )}
 
       {error && (
-        <div className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 flex items-center gap-3 rounded-xl border border-rose-500/40 bg-slate-950/95 px-4 py-2 text-xs text-rose-300 shadow-2xl">
+        <div className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 flex items-center gap-3 rounded-xl border border-rose-500/40 bg-[#121a2e]/95 px-4 py-2.5 text-sm text-rose-200 shadow-2xl">
           <span>{error}</span>
           <button
             type="button"
             onClick={() => setError(null)}
-            className="font-bold text-slate-400 hover:text-white"
+            className="font-bold text-[#8d97ae] hover:text-white"
           >
             ✕
           </button>
@@ -836,6 +653,7 @@ export default function App() {
             bettingEnabled={state.bettingEnabled}
             isHost={isHost}
             isSpectator={state.mode === 'spectator'}
+            selfPlayerId={state.human.id}
           />
         )}
 
@@ -844,6 +662,8 @@ export default function App() {
           entries={state.leaderboard}
           totalRounds={state.totalRounds}
           bettingEnabled={state.bettingEnabled}
+          selfPlayerId={state.human.id}
+          isSpectator={state.mode === 'spectator'}
           onPlayAgain={() =>
             handleStartNewMatch({
               mode: state.mode,
@@ -853,6 +673,11 @@ export default function App() {
               roundDurationSec: state.roundDurationSec,
               provider: state.provider,
               humanName: state.human.name,
+              selectedModels: allowAiForPlayAgain ? playAgainModels : [],
+              maxStepsPerRound: state.agyRunner?.maxStepsPerRound,
+              timeoutSec: state.agyRunner?.timeoutSec,
+              autoPlayEnabled:
+                allowAiForPlayAgain && playAgainModels.length > 0,
             })
           }
           onOpenSetup={() => setShowSetup(true)}
@@ -869,10 +694,31 @@ export default function App() {
           initialDuration={state.roundDurationSec}
           initialProvider={state.provider}
           initialHumanName={state.human.name}
+          agyRunner={state.agyRunner}
           health={health}
           starting={busyAction}
           onStart={handleStartNewMatch}
           onClose={() => setShowSetup(false)}
+        />
+      )}
+
+      {showDeveloperModal && (
+        <SettingsModal
+          initialTab="developer"
+          humanName={state.human.name}
+          provider={state.provider}
+          maxStepsPerRound={state.agyRunner?.maxStepsPerRound ?? 5}
+          timeoutSec={state.agyRunner?.timeoutSec ?? 120}
+          health={health}
+          mcpStatus={state.mcpStatus}
+          agyRunner={state.agyRunner}
+          onSaveGeneral={(patch) => {
+            void api.updateAgyConfig({
+              maxStepsPerRound: patch.maxStepsPerRound,
+              timeoutSec: patch.timeoutSec,
+            });
+          }}
+          onClose={() => setShowDeveloperModal(false)}
         />
       )}
     </main>

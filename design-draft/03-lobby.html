@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Lobby – draft</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .wrap { max-width: 980px; margin: 10px auto; padding: 0 48px; display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .invite { padding: 30px; text-align: center; }
+  .invite small { color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .1em; font-size: 12px; }
+  .code { font-family: Consolas, monospace; font-size: 64px; font-weight: 800; letter-spacing: .18em; margin: 6px 0 18px; color: #fff; }
+  .link { display: flex; gap: 8px; background: var(--bg); border: 1px solid var(--line-2); border-radius: 12px; padding: 6px 6px 6px 14px; align-items: center; }
+  .link > span:first-child { flex: 1; text-align: left; color: var(--muted); font-size: 14px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .players { padding: 24px; }
+  .p { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .p:last-child { border-bottom: 0; }
+  .p .avatar { width: 40px; height: 40px; }
+  .p b { flex: 1; }
+  .tag { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: rgba(251,191,36,.15); color: var(--amber); }
+  .tag.you { background: rgba(96,165,250,.15); color: var(--you); }
+  .tag.ai { background: rgba(167,139,250,.15); color: var(--gemini); }
+  .empty .avatar { background: transparent; border: 2px dashed var(--line-2); color: var(--muted); }
+  .empty b { color: var(--muted); font-weight: 500; }
+  .bar { max-width: 980px; margin: 22px auto 0; padding: 0 48px; display: flex; justify-content: space-between; align-items: center; }
+  h1 { max-width: 980px; margin: 8px auto 4px; padding: 0 48px; font-size: 30px; letter-spacing: -0.02em; }
+  .sub { max-width: 980px; margin: 0 auto 18px; padding: 0 48px; color: var(--muted); }
+</style></head>
+<body>
+  <nav class="nav">
+    <div class="brand"><div class="logo">🌍</div>GeoArena</div>
+    <div class="nav-right"><span class="btn btn-ghost" style="padding:8px 14px;font-size:14px">Leave room</span></div>
+  </nav>
+
+  <h1>Waiting for players…</h1>
+  <div class="sub">Whole world · 5 rounds · 1 min per round · <u>Edit</u></div>
+
+  <div class="wrap">
+    <div class="card invite">
+      <small>Room code</small>
+      <div class="code">K7Q2XM</div>
+      <div class="link"><span>geoarena.local/?room=K7Q2XM</span><span class="btn btn-primary">🔗 Copy invite link</span></div>
+      <div class="muted" style="font-size:13px;margin-top:14px">Friends who open the link join automatically.</div>
+    </div>
+
+    <div class="card players">
+      <div class="section-title">Players · 3 / 8</div>
+      <div class="p"><div class="avatar" style="background:var(--you)">CP</div><b>CP</b><span class="tag you">You</span><span class="tag">Host</span></div>
+      <div class="p"><div class="avatar" style="background:#f472b6">MI</div><b>Mia</b></div>
+      <div class="p"><div class="avatar" style="background:var(--gemini)">G</div><b>Gemini Flash</b><span class="tag ai">AI</span></div>
+      <div class="p empty"><div class="avatar">+</div><b>Add an AI player</b></div>
+    </div>
+  </div>
+
+  <div class="bar">
+    <span class="muted">✏️ Playing as <b style="color:var(--text)">CP</b> · change name</span>
+    <span class="btn btn-primary btn-lg">▶ Start game</span>
+  </div>
+
+  <div class="note" style="top:250px;left:40px;max-width:170px">Huge code + one copy button. Raw URL de-emphasised.</div>
+</body></html>
+
