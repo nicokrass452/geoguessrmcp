@@ -1,3 +1,4 @@
+import { Logo } from './Logo';
 import { useState } from 'react';
 import { ChevronDown, ChevronUp, RotateCcw } from 'lucide-react';
 import type { LeaderboardEntry } from '@geoguessr-mcp/shared';
@@ -50,25 +51,25 @@ export function formatNetChips(netChips?: number): {
   if (!isFiniteNum(netChips)) {
     return {
       label: '—',
-      badgeCls: 'border-white/10 bg-[#0b1020] text-[#8d97ae]',
+      badgeCls: 'border-white/10 bg-[#0b0d14] text-[#8a91a3]',
     };
   }
   const normalized = netChips === 0 ? 0 : netChips;
   if (normalized > 0) {
     return {
       label: `+${normalized.toLocaleString()}`,
-      badgeCls: 'border-[#22c55e]/30 bg-[#22c55e]/15 text-[#22c55e]',
+      badgeCls: 'border-[#ff7a2f]/30 bg-[#ff7a2f]/15 text-[#ff7a2f]',
     };
   }
   if (normalized < 0) {
     return {
       label: `-${Math.abs(normalized).toLocaleString()}`,
-      badgeCls: 'border-rose-500/30 bg-rose-500/15 text-rose-300',
+      badgeCls: 'border-[#e5484d]/30 bg-[#e5484d]/10 text-[#f2777b]',
     };
   }
   return {
     label: '0',
-    badgeCls: 'border-white/10 bg-[#18223a] text-[#8d97ae]',
+    badgeCls: 'border-white/10 bg-[#1a1e28] text-[#8a91a3]',
   };
 }
 
@@ -113,27 +114,27 @@ export function FinalLeaderboardModal({
       )
     : undefined;
 
-  let headline = 'Match complete!';
+  let headline = 'Match complete';
   let subtitle = `${totalRounds} rounds played`;
 
   if (selfEntry && winner) {
     if (entries.length === 1) {
-      headline = `You scored ${selfEntry.totalScore.toLocaleString()} pts!`;
+      headline = `You scored ${selfEntry.totalScore.toLocaleString()} pts`;
       subtitle = `Across ${totalRounds} rounds.`;
     } else if (selfEntry.rank === 1) {
-      headline = 'You won!';
+      headline = 'You won';
       const lead = second ? selfEntry.totalScore - second.totalScore : 0;
       subtitle =
         second && lead > 0
           ? `Ahead of ${getEntryAvatar(second, false).displayName} by ${lead.toLocaleString()} points.`
           : `Finished 1st across ${totalRounds} rounds.`;
     } else {
-      headline = `You finished ${formatOrdinalRank(selfEntry.rank)}!`;
+      headline = `You finished ${formatOrdinalRank(selfEntry.rank)}`;
       const gap = winner.totalScore - selfEntry.totalScore;
       subtitle = `Just ${gap.toLocaleString()} points behind ${getEntryAvatar(winner, false).displayName}.`;
     }
   } else if (winner) {
-    headline = `${getEntryAvatar(winner, false).displayName} wins!`;
+    headline = `${getEntryAvatar(winner, false).displayName} wins`;
     const lead = second ? winner.totalScore - second.totalScore : 0;
     subtitle =
       second && lead > 0
@@ -152,27 +153,21 @@ export function FinalLeaderboardModal({
   const rest = entries.slice(3);
 
   return (
-    <div className="geo-bg fixed inset-0 z-50 overflow-y-auto overflow-x-hidden page-scrollbar text-[#eef1f8]">
+    <div className="geo-bg fixed inset-0 z-50 overflow-y-auto overflow-x-hidden page-scrollbar text-[#eef0f5]">
       {/* Top-Left Brand */}
       <nav className="mx-auto flex max-w-[1200px] items-center px-5 py-5 sm:px-10">
-        <div className="flex items-center gap-2.5 text-[18px] font-extrabold tracking-tight text-white">
-          <span className="grid h-[34px] w-[34px] place-items-center rounded-[10px] bg-gradient-to-br from-[#22c55e] to-[#3b82f6] text-lg">
-            🌍
-          </span>
-          <span>GeoArena</span>
-        </div>
+        <Logo />
       </nav>
 
       <div className="mx-auto max-w-[900px] px-5 pt-2 pb-14 sm:px-12 text-center">
-        <div className="text-[48px] leading-none">🏆</div>
-        <h1 className="mt-2.5 text-3xl sm:text-[44px] font-extrabold tracking-[-0.03em] text-white">
+                <h1 className="mt-2.5 text-3xl sm:text-[44px] font-medium tracking-[-0.02em] text-white">
           {headline}
         </h1>
-        <p className="mt-1 mb-9 text-[17px] text-[#8d97ae]">{subtitle}</p>
+        <p className="mt-1 mb-9 text-[17px] text-[#8a91a3]">{subtitle}</p>
 
         {/* Podium */}
         {podiumOrder.length > 0 && (
-          <div className="mb-7 flex items-end justify-center gap-3 sm:gap-[18px]">
+          <div className="mb-7 flex items-end justify-center gap-3 sm:gap-4">
             {podiumOrder.map((entry) => {
               const isSelf =
                 !isSpectator &&
@@ -183,26 +178,26 @@ export function FinalLeaderboardModal({
                 entry.rank === 1 ? 170 : entry.rank === 2 ? 120 : 85;
               const stepBg =
                 entry.rank === 1
-                  ? 'linear-gradient(#ca8a04, #854d0e)'
+                  ? '#3a2a1c'
                   : entry.rank === 2
-                    ? '#2a3550'
-                    : '#3b2f25';
+                    ? '#2a2f3b'
+                    : '#1a1e28';
 
               return (
                 <div
                   key={entry.playerId}
-                  className="flex w-[110px] sm:w-[200px] flex-col items-center gap-2.5"
+                  className="flex w-[112px] sm:w-[200px] flex-col items-center gap-2.5"
                 >
                   <div
                     style={{ backgroundColor: av.color }}
-                    className="grid h-16 w-16 place-items-center rounded-full border-4 border-[#0b1020] text-[22px] font-extrabold text-[#0b1020] shadow-lg"
+                    className="grid h-16 w-16 place-items-center rounded-full border-4 border-[#0b0d14] text-[22px] font-semibold text-[#0b0d14] shadow-lg"
                   >
                     {av.badge}
                   </div>
-                  <b className="truncate max-w-full text-[16px] sm:text-[17px] font-bold text-white">
+                  <b className="truncate max-w-full text-[16px] sm:text-[17px] font-medium text-white">
                     {av.displayName}
                   </b>
-                  <span className="text-[14px] text-[#8d97ae]">
+                  <span className="text-[14px] text-[#8a91a3]">
                     {entry.totalScore.toLocaleString()} pts
                     {showBetting && isFiniteNum(entry.chips)
                       ? ` · ${formatChipStack(entry.chips)}c`
@@ -210,7 +205,7 @@ export function FinalLeaderboardModal({
                   </span>
                   <div
                     style={{ height: `${stepHeight}px`, background: stepBg }}
-                    className="grid w-full place-items-center rounded-t-[14px] text-[34px] font-extrabold text-white shadow-xl"
+                    className="grid w-full place-items-center rounded-t-[14px] text-[34px] font-semibold text-white shadow-xl"
                   >
                     {entry.rank}
                   </div>
@@ -234,19 +229,19 @@ export function FinalLeaderboardModal({
                   key={entry.playerId}
                   className="flex items-center gap-3 py-2.5"
                 >
-                  <span className="w-5 text-sm font-semibold text-[#8d97ae]">
+                  <span className="w-5 text-sm font-semibold text-[#8a91a3]">
                     {entry.rank}
                   </span>
                   <div
                     style={{ backgroundColor: av.color }}
-                    className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full text-[11px] font-extrabold text-[#0b1020]"
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[11px] font-semibold text-[#0b0d14]"
                   >
                     {av.badge}
                   </div>
                   <b className="flex-1 truncate text-[15px] text-white">
                     {av.displayName}
                   </b>
-                  <span className="text-sm text-[#8d97ae]">
+                  <span className="text-sm text-[#8a91a3]">
                     {entry.totalScore.toLocaleString()} pts
                   </span>
                 </div>
@@ -260,7 +255,7 @@ export function FinalLeaderboardModal({
           <button
             type="button"
             onClick={onPlayAgain}
-            className="inline-flex items-center gap-2 rounded-[14px] bg-[#22c55e] px-7 py-4 text-[17px] font-bold text-[#052e14] shadow-[0_8px_24px_rgba(34,197,94,0.25)] hover:bg-[#34d369] transition"
+            className="inline-flex items-center gap-2 rounded-[14px] bg-[#ff7a2f] px-7 py-4 text-[17px] font-medium text-[#1f0e03] hover:bg-[#ff8d4d] transition"
           >
             <RotateCcw className="h-4 w-4" />
             <span>Play again</span>
@@ -269,7 +264,7 @@ export function FinalLeaderboardModal({
           <button
             type="button"
             onClick={onOpenSetup}
-            className="inline-flex items-center gap-2 rounded-[14px] border border-white/15 bg-[#18223a] px-6 py-4 text-[16px] font-bold text-[#eef1f8] hover:bg-[#223050] transition"
+            className="inline-flex items-center gap-2 rounded-[14px] border border-white/15 bg-[#1a1e28] px-6 py-4 text-[16px] font-medium text-[#eef0f5] hover:bg-[#223050] transition"
           >
             <span>Change settings</span>
           </button>
@@ -278,7 +273,7 @@ export function FinalLeaderboardModal({
             <button
               type="button"
               onClick={onReturnHome}
-              className="inline-flex items-center gap-2 rounded-[14px] border border-white/15 bg-transparent px-6 py-4 text-[16px] font-bold text-[#8d97ae] hover:text-white transition"
+              className="inline-flex items-center gap-2 rounded-[14px] border border-white/15 bg-transparent px-6 py-4 text-[16px] font-medium text-[#8a91a3] hover:text-white transition"
             >
               <span>Home</span>
             </button>
@@ -291,7 +286,7 @@ export function FinalLeaderboardModal({
             <button
               type="button"
               onClick={() => setShowBreakdown((v) => !v)}
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-[#8d97ae] hover:text-white transition"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-[#8a91a3] hover:text-white transition"
             >
               <span>Round-by-round breakdown</span>
               {showBreakdown ? (
@@ -314,17 +309,17 @@ export function FinalLeaderboardModal({
                     <div key={entry.playerId} className="py-3 first:pt-0 last:pb-0">
                       <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                         <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-[#8d97ae]">
+                          <span className="text-xs font-medium text-[#8a91a3]">
                             #{entry.rank}
                           </span>
-                          <span className="font-bold text-white">
+                          <span className="font-medium text-white">
                             {av.displayName}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2 text-xs text-[#8d97ae]">
+                        <div className="flex items-center gap-2 text-xs text-[#8a91a3]">
                           {showBetting && (
                             <span
-                              className={`rounded-md border px-1.5 py-0.5 font-mono font-bold ${net.badgeCls}`}
+                              className={`rounded-md border px-1.5 py-0.5 font-mono font-medium ${net.badgeCls}`}
                             >
                               {net.label} chips
                             </span>
@@ -339,14 +334,14 @@ export function FinalLeaderboardModal({
                         {entry.roundScores.map((rs) => (
                           <span
                             key={rs.roundNumber}
-                            className="rounded-lg border border-white/10 bg-[#0b1020] px-2.5 py-1 text-xs text-[#eef1f8]"
+                            className="rounded-lg border border-white/10 bg-[#0b0d14] px-2.5 py-1 text-xs text-[#eef0f5]"
                           >
-                            <span className="text-[#8d97ae]">
+                            <span className="text-[#8a91a3]">
                               R{rs.roundNumber}:
                             </span>{' '}
                             <b>{rs.score.toLocaleString()}</b>
                             {rs.distanceKm !== null && (
-                              <span className="text-[#8d97ae]">
+                              <span className="text-[#8a91a3]">
                                 {' '}
                                 ({Math.round(rs.distanceKm)} km)
                               </span>

@@ -69,30 +69,30 @@ export function TopHud({
         <button
           type="button"
           onClick={() => setMenuOpen((v) => !v)}
-          className="geo-glass inline-flex items-center gap-2 px-3.5 py-2.5 text-[14px] font-semibold text-[#eef1f8] hover:border-white/25 transition"
+          className="geo-glass inline-flex items-center gap-2 px-3.5 py-2.5 text-[14px] font-semibold text-[#eef0f5] hover:border-white/25 transition"
         >
-          <Menu className="h-4 w-4 text-[#8d97ae]" />
+          <Menu className="h-4 w-4 text-[#8a91a3]" />
           <span>Menu</span>
         </button>
 
         {!wsConnected && (
-          <div className="geo-glass inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-rose-300 border-rose-500/40">
+          <div className="geo-glass inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-[#f2777b] border-[#e5484d]/30">
             <WifiOff className="h-3.5 w-3.5" />
             <span>Reconnecting…</span>
           </div>
         )}
 
         {menuOpen && (
-          <div className="absolute top-12 left-0 w-56 rounded-2xl border border-white/15 bg-[#121a2e]/95 p-1.5 shadow-2xl backdrop-blur-md">
+          <div className="absolute top-12 left-0 w-56 rounded-2xl border border-white/15 bg-[#11141c]/95 p-1.5 shadow-2xl backdrop-blur-md">
             <button
               type="button"
               onClick={() => {
                 setMenuOpen(false);
                 onOpenSettings();
               }}
-              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-[#eef1f8] hover:bg-white/10 transition"
+              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-[#eef0f5] hover:bg-white/10 transition"
             >
-              <Settings className="h-4 w-4 text-[#8d97ae]" />
+              <Settings className="h-4 w-4 text-[#8a91a3]" />
               <span>Change settings</span>
             </button>
             {onOpenDeveloper && (
@@ -102,9 +102,9 @@ export function TopHud({
                   setMenuOpen(false);
                   onOpenDeveloper();
                 }}
-                className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-[#eef1f8] hover:bg-white/10 transition"
+                className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-[#eef0f5] hover:bg-white/10 transition"
               >
-                <Terminal className="h-4 w-4 text-[#8d97ae]" />
+                <Terminal className="h-4 w-4 text-[#8a91a3]" />
                 <span>Developer &amp; MCP</span>
               </button>
             )}
@@ -116,7 +116,7 @@ export function TopHud({
                 setMenuOpen(false);
                 onReturnHome();
               }}
-              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-rose-300 hover:bg-rose-500/15 transition"
+              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-[#f2777b] hover:bg-[#e5484d]/10 transition"
             >
               <Home className="h-4 w-4" />
               <span>Leave game</span>
@@ -128,10 +128,10 @@ export function TopHud({
       {/* Center: Clean 3-Stat Bar (Round, Time, Score [+ Chips if betting]) */}
       <div className="pointer-events-auto geo-glass flex items-stretch overflow-hidden">
         <div className="px-4 sm:px-5 py-2 text-center border-r border-white/10">
-          <small className="block text-[11px] font-bold uppercase tracking-[0.1em] text-[#8d97ae]">
+          <small className="block text-[12px] text-[#8a91a3]">
             Round
           </small>
-          <b className="text-[18px] sm:text-[22px] font-extrabold text-white leading-tight">
+          <b className="text-[18px] sm:text-[22px] font-semibold text-white leading-tight">
             {state.currentRoundNumber} / {state.totalRounds}
           </b>
         </div>
@@ -143,17 +143,17 @@ export function TopHud({
               : ''
           }`}
         >
-          <small className="block text-[11px] font-bold uppercase tracking-[0.1em] text-[#8d97ae]">
+          <small className="block text-[12px] text-[#8a91a3]">
             Time
           </small>
           <b
-            className={`text-[18px] sm:text-[22px] font-extrabold leading-tight font-mono ${
+            className={`text-[18px] sm:text-[22px] font-semibold leading-tight font-mono ${
               timerUrgent
-                ? 'text-rose-400 animate-pulse'
+                ? 'text-[#e5484d]'
                 : timerWarn
-                  ? 'text-[#fbbf24]'
+                  ? 'text-[#e3b65c]'
                   : state.timeRemainingSec !== null
-                    ? 'text-[#fbbf24]'
+                    ? 'text-[#e3b65c]'
                     : 'text-white'
             }`}
           >
@@ -167,10 +167,10 @@ export function TopHud({
               state.bettingEnabled ? 'border-r border-white/10' : ''
             }`}
           >
-            <small className="block text-[11px] font-bold uppercase tracking-[0.1em] text-[#8d97ae]">
+            <small className="block text-[12px] text-[#8a91a3]">
               Score
             </small>
-            <b className="text-[18px] sm:text-[22px] font-extrabold text-white leading-tight">
+            <b className="text-[18px] sm:text-[22px] font-semibold text-white leading-tight">
               {state.human.totalScore.toLocaleString()}
             </b>
           </div>
@@ -181,10 +181,10 @@ export function TopHud({
             data-testid="top-hud-chips"
             className="px-4 sm:px-5 py-2 text-center"
           >
-            <small className="block text-[11px] font-bold uppercase tracking-[0.1em] text-[#8d97ae]">
+            <small className="block text-[12px] text-[#8a91a3]">
               Chips
             </small>
-            <b className="text-[18px] sm:text-[22px] font-extrabold text-[#fbbf24] leading-tight">
+            <b className="text-[18px] sm:text-[22px] font-semibold text-[#e3b65c] leading-tight">
               {state.human.chips.toLocaleString()}
             </b>
           </div>
@@ -211,15 +211,15 @@ export function TopHud({
                 );
               });
             }}
-            className="geo-glass inline-flex items-center gap-2 px-3.5 py-2.5 text-[14px] text-[#eef1f8] hover:border-white/25 transition"
+            className="geo-glass inline-flex items-center gap-2 px-3.5 py-2.5 text-[14px] text-[#eef0f5] hover:border-white/25 transition"
           >
-            <span className="text-[#8d97ae]">Room</span>
-            <b className="font-mono font-bold text-white">{state.roomCode}</b>
-            <span className="text-[#8d97ae]">·</span>
+            <span className="text-[#8a91a3]">Room</span>
+            <b className="font-mono font-medium text-white">{state.roomCode}</b>
+            <span className="text-[#8a91a3]">·</span>
             {copiedInvite ? (
-              <Check className="h-4 w-4 text-[#22c55e]" />
+              <Check className="h-4 w-4 text-[#ff7a2f]" />
             ) : (
-              <Link2 className="h-4 w-4 text-[#8d97ae]" />
+              <Link2 className="h-4 w-4 text-[#8a91a3]" />
             )}
           </button>
         )}

@@ -8,7 +8,7 @@ import type {
   PanoramaProviderChoice,
 } from '@geoguessr-mcp/shared';
 import type { StartMatchPayload } from '../lib/api';
-import { FALLBACK_AGY_MODELS, getModelUiMeta, LOCATION_META } from '../lib/uiHelpers';
+import { FALLBACK_AGY_MODELS, getModelUiMeta } from '../lib/uiHelpers';
 
 interface LobbyModalProps {
   initialMode: GameMode;
@@ -88,17 +88,17 @@ export function LobbyModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0b1020]/80 p-4 backdrop-blur-md">
-      <div className="flex max-h-[90dvh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-white/15 bg-[#121a2e] text-[#eef1f8] shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0b0d14]/80 p-4 backdrop-blur-md">
+      <div className="flex max-h-[90dvh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-white/15 bg-[#11141c] text-[#eef0f5] shadow-2xl">
         <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-5 py-4">
           <div className="flex items-center gap-2.5">
-            <Globe2 className="h-5 w-5 text-[#22c55e]" />
-            <h2 className="text-base font-bold">Change settings</h2>
+            <Globe2 className="h-5 w-5 text-[#ff7a2f]" />
+            <h2 className="text-base font-medium">Change settings</h2>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1.5 text-[#8d97ae] hover:bg-[#18223a] hover:text-white transition"
+            className="rounded-lg p-1.5 text-[#8a91a3] hover:bg-[#1a1e28] hover:text-white transition"
           >
             <X className="h-4 w-4" />
           </button>
@@ -106,7 +106,7 @@ export function LobbyModal({
 
         <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 p-5 text-sm">
           <div>
-            <label className="mb-1.5 block font-semibold text-[#eef1f8]">
+            <label className="mb-1.5 block font-semibold text-[#eef0f5]">
               Your name
             </label>
             <input
@@ -114,12 +114,12 @@ export function LobbyModal({
               value={humanName}
               onChange={(e) => setHumanName(e.target.value)}
               maxLength={40}
-              className="w-full rounded-xl border border-white/15 bg-[#0b1020] px-3.5 py-2.5 text-sm text-white focus:border-[#22c55e] focus:outline-none"
+              className="w-full rounded-xl border border-white/15 bg-[#0b0d14] px-3.5 py-2.5 text-sm text-white focus:border-[#ff7a2f] focus:outline-none"
             />
           </div>
 
           <div>
-            <label className="mb-1.5 block font-semibold text-[#eef1f8]">
+            <label className="mb-1.5 block font-semibold text-[#eef0f5]">
               Game mode
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -139,15 +139,15 @@ export function LobbyModal({
                   onClick={() => setMode(opt.id)}
                   className={`rounded-xl border p-2.5 text-left transition ${
                     mode === opt.id
-                      ? 'border-[#22c55e] bg-[#22c55e]/10 text-white'
-                      : 'border-white/10 bg-[#0b1020]/60 text-[#8d97ae] hover:text-white'
+                      ? 'border-[#ff7a2f] bg-[#ff7a2f]/10 text-white'
+                      : 'border-white/10 bg-[#0b0d14]/60 text-[#8a91a3] hover:text-white'
                   }`}
                 >
-                  <div className="flex items-center gap-1.5 font-bold text-xs">
-                    <Users className="h-3.5 w-3.5 text-[#22c55e]" />
+                  <div className="flex items-center gap-1.5 font-medium text-xs">
+                    <Users className="h-3.5 w-3.5 text-[#ff7a2f]" />
                     <span>{opt.label}</span>
                   </div>
-                  <div className="mt-0.5 text-[11px] text-[#8d97ae]">
+                  <div className="mt-0.5 text-[11px] text-[#8a91a3]">
                     {opt.desc}
                   </div>
                 </button>
@@ -157,7 +157,7 @@ export function LobbyModal({
 
           {allowsAi && (
             <div>
-              <label className="mb-1.5 block font-semibold text-[#eef1f8]">
+              <label className="mb-1.5 block font-semibold text-[#eef0f5]">
                 AI opponents
               </label>
               <div className="flex flex-wrap gap-2">
@@ -173,13 +173,13 @@ export function LobbyModal({
                       onClick={() => toggleModel(m.id)}
                       className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold transition ${
                         active
-                          ? 'border-[#22c55e] bg-[#22c55e]/10 text-white'
-                          : 'border-white/10 bg-[#0b1020] text-[#8d97ae] hover:text-white'
+                          ? 'border-[#ff7a2f] bg-[#ff7a2f]/10 text-white'
+                          : 'border-white/10 bg-[#0b0d14] text-[#8a91a3] hover:text-white'
                       }`}
                     >
                       <span
                         style={{ backgroundColor: meta.color }}
-                        className="grid h-5 w-5 place-items-center rounded-full text-[10px] font-extrabold text-[#0b1020]"
+                        className="grid h-5 w-5 place-items-center rounded-full text-[10px] font-semibold text-[#0b0d14]"
                       >
                         {meta.badge}
                       </span>
@@ -193,7 +193,7 @@ export function LobbyModal({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="mb-1.5 block font-semibold text-[#eef1f8]">
+              <label className="mb-1.5 block font-semibold text-[#eef0f5]">
                 Map
               </label>
               <select
@@ -201,45 +201,45 @@ export function LobbyModal({
                 onChange={(e) =>
                   setLocationMode(e.target.value as LocationMode)
                 }
-                className="w-full rounded-xl border border-white/15 bg-[#0b1020] px-3 py-2.5 text-sm text-white focus:border-[#22c55e] focus:outline-none"
+                className="w-full rounded-xl border border-white/15 bg-[#0b0d14] px-3 py-2.5 text-sm text-white focus:border-[#ff7a2f] focus:outline-none"
               >
                 <option value="standard">
-                  {LOCATION_META.standard.emoji} Whole world
+                  Whole world
                 </option>
                 <option value="big_cities">
-                  {LOCATION_META.big_cities.emoji} Big cities
+                  Big cities
                 </option>
                 <option value="mountain_regions">
-                  {LOCATION_META.mountain_regions.emoji} Mountains
+                  Mountains
                 </option>
               </select>
             </div>
 
             <div>
-              <label className="mb-1.5 block font-semibold text-[#eef1f8]">
+              <label className="mb-1.5 block font-semibold text-[#eef0f5]">
                 Betting
               </label>
               <button
                 type="button"
                 onClick={() => setBettingEnabled((v) => !v)}
-                className={`flex w-full items-center justify-between rounded-xl border px-3.5 py-2.5 text-sm font-bold transition ${
+                className={`flex w-full items-center justify-between rounded-xl border px-3.5 py-2.5 text-sm font-medium transition ${
                   bettingEnabled
-                    ? 'border-[#22c55e] bg-[#22c55e]/10 text-white'
-                    : 'border-white/15 bg-[#0b1020] text-[#8d97ae]'
+                    ? 'border-[#ff7a2f] bg-[#ff7a2f]/10 text-white'
+                    : 'border-white/15 bg-[#0b0d14] text-[#8a91a3]'
                 }`}
               >
                 <span className="flex items-center gap-1.5">
-                  <Coins className="h-4 w-4 text-[#fbbf24]" />
+                  <Coins className="h-4 w-4 text-[#a3a9b8]" />
                   <span>{bettingEnabled ? 'Betting ON' : 'Betting OFF'}</span>
                 </span>
-                <span className="text-xs text-[#8d97ae]">1,000</span>
+                <span className="text-xs text-[#8a91a3]">1,000</span>
               </button>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="mb-1.5 block font-semibold text-[#eef1f8]">
+              <label className="mb-1.5 block font-semibold text-[#eef0f5]">
                 Rounds
               </label>
               <div className="flex gap-1.5">
@@ -248,10 +248,10 @@ export function LobbyModal({
                     key={r}
                     type="button"
                     onClick={() => setTotalRounds(r)}
-                    className={`flex-1 rounded-xl border py-2 text-sm font-bold transition ${
+                    className={`flex-1 rounded-xl border py-2 text-sm font-medium transition ${
                       totalRounds === r
-                        ? 'border-[#22c55e] bg-[#22c55e]/10 text-white'
-                        : 'border-white/10 bg-[#0b1020] text-[#8d97ae] hover:text-white'
+                        ? 'border-[#ff7a2f] bg-[#ff7a2f]/10 text-white'
+                        : 'border-white/10 bg-[#0b0d14] text-[#8a91a3] hover:text-white'
                     }`}
                   >
                     {r}
@@ -261,7 +261,7 @@ export function LobbyModal({
             </div>
 
             <div>
-              <label className="mb-1.5 block font-semibold text-[#eef1f8]">
+              <label className="mb-1.5 block font-semibold text-[#eef0f5]">
                 Time per round
               </label>
               <select
@@ -273,7 +273,7 @@ export function LobbyModal({
                     e.target.value === 'none' ? null : Number(e.target.value)
                   )
                 }
-                className="w-full rounded-xl border border-white/15 bg-[#0b1020] px-3 py-2.5 text-sm text-white focus:border-[#22c55e] focus:outline-none"
+                className="w-full rounded-xl border border-white/15 bg-[#0b0d14] px-3 py-2.5 text-sm text-white focus:border-[#ff7a2f] focus:outline-none"
               >
                 <option value="none">No limit</option>
                 <option value="30">30s</option>
@@ -284,13 +284,13 @@ export function LobbyModal({
             </div>
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-[#0b1020]/50 overflow-hidden">
+          <div className="rounded-xl border border-white/10 bg-[#0b0d14]/50 overflow-hidden">
             <button
               type="button"
               onClick={() => setAdvancedOpen((v) => !v)}
-              className="flex w-full items-center justify-between px-4 py-2.5 text-xs font-semibold text-[#8d97ae] hover:text-white"
+              className="flex w-full items-center justify-between px-4 py-2.5 text-xs font-semibold text-[#8a91a3] hover:text-white"
             >
-              <span>⚙ Advanced — image source, AI move limit</span>
+              <span>Advanced <span className="font-normal text-[#8a91a3]/80">· Image source, AI move limit</span></span>
               {advancedOpen ? (
                 <ChevronUp className="h-4 w-4" />
               ) : (
@@ -300,7 +300,7 @@ export function LobbyModal({
             {advancedOpen && (
               <div className="border-t border-white/10 p-3.5 grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-xs font-semibold text-[#8d97ae]">
+                  <label className="mb-1 block text-xs font-semibold text-[#8a91a3]">
                     Image source
                   </label>
                   <select
@@ -308,7 +308,7 @@ export function LobbyModal({
                     onChange={(e) =>
                       setProvider(e.target.value as PanoramaProviderChoice)
                     }
-                    className="w-full rounded-xl border border-white/15 bg-[#0b1020] px-3 py-2 text-xs text-white focus:border-[#22c55e] focus:outline-none"
+                    className="w-full rounded-xl border border-white/15 bg-[#0b0d14] px-3 py-2 text-xs text-white focus:border-[#ff7a2f] focus:outline-none"
                   >
                     <option value="auto">Auto (Best available)</option>
                     <option value="open">Open 360° Procedural</option>
@@ -328,7 +328,7 @@ export function LobbyModal({
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-semibold text-[#8d97ae]">
+                  <label className="mb-1 block text-xs font-semibold text-[#8a91a3]">
                     AI move limit
                   </label>
                   <select
@@ -336,7 +336,7 @@ export function LobbyModal({
                     onChange={(e) =>
                       setMaxStepsPerRound(Number(e.target.value))
                     }
-                    className="w-full rounded-xl border border-white/15 bg-[#0b1020] px-3 py-2 text-xs text-white focus:border-[#22c55e] focus:outline-none"
+                    className="w-full rounded-xl border border-white/15 bg-[#0b0d14] px-3 py-2 text-xs text-white focus:border-[#ff7a2f] focus:outline-none"
                   >
                     <option value="3">3 moves</option>
                     <option value="5">5 moves</option>
@@ -349,11 +349,11 @@ export function LobbyModal({
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center justify-end gap-2.5 border-t border-white/10 bg-[#0b1020]/60 px-5 py-3.5">
+        <div className="flex shrink-0 items-center justify-end gap-2.5 border-t border-white/10 bg-[#0b0d14]/60 px-5 py-3.5">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-white/15 px-4 py-2 text-sm font-semibold text-[#8d97ae] hover:text-white transition"
+            className="rounded-xl border border-white/15 px-4 py-2 text-sm font-semibold text-[#8a91a3] hover:text-white transition"
           >
             Cancel
           </button>
@@ -379,7 +379,7 @@ export function LobbyModal({
                 autoPlayEnabled: allowsAi && finalModels.length > 0,
               });
             }}
-            className="flex items-center gap-2 rounded-xl bg-[#22c55e] px-5 py-2 text-sm font-bold text-[#052e14] shadow-[0_8px_24px_rgba(34,197,94,0.25)] hover:bg-[#34d369] disabled:opacity-60 transition"
+            className="flex items-center gap-2 rounded-xl bg-[#ff7a2f] px-5 py-2 text-sm font-medium text-[#1f0e03] hover:bg-[#ff8d4d] disabled:opacity-60 transition"
           >
             <Play className="h-3.5 w-3.5 fill-current" />
             <span>{starting ? 'Starting…' : 'Start new match'}</span>

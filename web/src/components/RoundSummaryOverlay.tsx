@@ -48,25 +48,25 @@ export function formatChipDelta(chipDelta?: number): {
   if (!isFiniteNum(chipDelta)) {
     return {
       text: '—',
-      badgeCls: 'border-white/10 bg-[#0b1020] text-[#8d97ae]',
+      badgeCls: 'border-white/10 bg-[#0b0d14] text-[#8a91a3]',
     };
   }
   const normalized = chipDelta === 0 ? 0 : chipDelta;
   if (normalized > 0) {
     return {
       text: `+${normalized.toLocaleString()}`,
-      badgeCls: 'border-[#22c55e]/30 bg-[#22c55e]/15 text-[#22c55e]',
+      badgeCls: 'border-[#ff7a2f]/30 bg-[#ff7a2f]/15 text-[#ff7a2f]',
     };
   }
   if (normalized < 0) {
     return {
       text: `-${Math.abs(normalized).toLocaleString()}`,
-      badgeCls: 'border-rose-500/30 bg-rose-500/15 text-rose-300',
+      badgeCls: 'border-[#e5484d]/30 bg-[#e5484d]/10 text-[#f2777b]',
     };
   }
   return {
     text: '0',
-    badgeCls: 'border-white/10 bg-[#18223a] text-[#8d97ae]',
+    badgeCls: 'border-white/10 bg-[#1a1e28] text-[#8a91a3]',
   };
 }
 
@@ -101,7 +101,7 @@ function createTargetIcon(): L.DivIcon {
     className: '',
     iconSize: [38, 38],
     iconAnchor: [19, 19],
-    html: `<div style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:9999px;background:#22c55e;border:4px solid #ffffff;box-shadow:0 0 0 8px rgba(34,197,94,0.25);color:#052e14;font-weight:900;font-size:16px;">★</div>`,
+    html: `<div style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;"><svg width="30" height="30" viewBox="0 0 20 20" style="filter:drop-shadow(0 2px 4px rgba(0,0,0,.5))"><rect x="1" y="1" width="18" height="18" rx="3" fill="#eef0f5" stroke="#0b0d14" stroke-width="1.5"/><path d="M19 1v15a3 3 0 0 1-3 3H1z" fill="#ff7a2f"/></svg></div>`,
   });
 }
 
@@ -112,7 +112,7 @@ function createPlayerPinIcon(color: string, badge: string): L.DivIcon {
     className: '',
     iconSize: [30, 30],
     iconAnchor: [15, 15],
-    html: `<div style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:9999px;background:${safeColor};border:3px solid #ffffff;box-shadow:0 4px 12px rgba(0,0,0,0.45);color:#0b1020;font-weight:800;font-size:11px;">${safeInitial}</div>`,
+    html: `<div style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:9999px;background:${safeColor};border:3px solid #ffffff;box-shadow:0 4px 12px rgba(0,0,0,0.45);color:#0b0d14;font-weight:800;font-size:11px;">${safeInitial}</div>`,
   });
 }
 
@@ -242,24 +242,24 @@ export function RoundSummaryOverlay({
     : 0;
 
   return (
-    <div className="fixed inset-0 z-40 overflow-hidden bg-[#0b1020]">
+    <div className="fixed inset-0 z-40 overflow-hidden bg-[#0b0d14]">
       {/* Full-Screen Result Map */}
       <div ref={mapElRef} className="fixed inset-0 h-full w-full" />
 
       {/* Top-Center Round Pill */}
-      <div className="pointer-events-none fixed top-4 left-1/2 z-[450] -translate-x-1/2 rounded-full border border-white/15 bg-[#0b1020]/85 px-5 py-2 text-sm font-bold text-white backdrop-blur-md shadow-xl">
+      <div className="pointer-events-none fixed top-4 left-1/2 z-[450] -translate-x-1/2 rounded-full border border-white/15 bg-[#0b0d14]/85 px-5 py-2 text-sm font-medium text-white backdrop-blur-md shadow-xl">
         Round {roundNumber} of {totalRounds}
       </div>
 
       {/* Bottom Floating Summary Panel */}
-      <div className="fixed bottom-5 left-1/2 z-[450] -translate-x-1/2 w-[min(900px,calc(100vw-2rem))] rounded-2xl border border-white/15 bg-[#121a2e]/95 p-5 sm:p-6 backdrop-blur-md shadow-2xl">
+      <div className="fixed bottom-5 left-1/2 z-[450] -translate-x-1/2 w-[min(900px,calc(100vw-2rem))] rounded-2xl border border-white/15 bg-[#11141c]/95 p-5 sm:p-6 backdrop-blur-md shadow-2xl">
         {/* Headline Row */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <small className="text-[12px] font-bold uppercase tracking-[0.08em] text-[#8d97ae]">
-              📍 The location was
+            <small className="text-[12px] font-medium text-[#8a91a3]">
+              The location was
             </small>
-            <h1 className="mt-0.5 text-2xl sm:text-[30px] font-extrabold tracking-[-0.02em] text-white">
+            <h1 className="mt-0.5 text-2xl sm:text-[30px] font-medium tracking-[-0.01em] text-white">
               {summary.target.city}, {summary.target.country}
             </h1>
           </div>
@@ -267,12 +267,12 @@ export function RoundSummaryOverlay({
           {selfResult && (
             <div className="text-right ml-auto">
               <div className="flex items-baseline justify-end gap-2">
-                <span className="text-3xl sm:text-[40px] font-extrabold leading-none text-[#22c55e]">
+                <span className="text-3xl sm:text-[40px] font-semibold leading-none text-[#ff7a2f]">
                   +{selfResult.score.toLocaleString()}
                 </span>
                 {showBetting && isFiniteNum(selfResult.chipDelta) && (
                   <span
-                    className={`rounded-lg border px-2 py-0.5 font-mono text-xs font-bold ${
+                    className={`rounded-lg border px-2 py-0.5 font-mono text-xs font-medium ${
                       formatChipDelta(selfResult.chipDelta).badgeCls
                     }`}
                   >
@@ -280,7 +280,7 @@ export function RoundSummaryOverlay({
                   </span>
                 )}
               </div>
-              <div className="mt-1 text-[15px] text-[#8d97ae]">
+              <div className="mt-1 text-[15px] text-[#8a91a3]">
                 {isSpectator
                   ? `${selfResult.name} was ${formatDistance(selfResult.distanceKm)} away`
                   : selfResult.distanceKm !== null
@@ -292,13 +292,10 @@ export function RoundSummaryOverlay({
         </div>
 
         {/* Progress Bar */}
-        <div className="my-4 h-2.5 w-full overflow-hidden rounded-full bg-[#26314b]">
+        <div className="my-4 h-2 w-full overflow-hidden rounded-full bg-[#1a1e28]">
           <div
-            className="h-full rounded-full transition-all duration-500"
-            style={{
-              width: `${headlinePct}%`,
-              background: 'linear-gradient(90deg, #16a34a, #4ade80)',
-            }}
+            className="h-full w-full origin-left rounded-full bg-[#ff7a2f] transition-transform duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
+            style={{ transform: `scaleX(${headlinePct / 100})` }}
           />
         </div>
 
@@ -320,7 +317,7 @@ export function RoundSummaryOverlay({
             return (
               <div
                 key={r.playerId}
-                className={`flex items-center gap-2.5 rounded-xl border bg-[#0b1020] px-3 py-2.5 ${
+                className={`flex items-center gap-2.5 rounded-xl border bg-[#0b0d14] px-3 py-2.5 ${
                   isSelf
                     ? 'border-[#60a5fa]/60'
                     : 'border-white/[0.08]'
@@ -328,15 +325,15 @@ export function RoundSummaryOverlay({
               >
                 <div
                   style={{ backgroundColor: meta.color }}
-                  className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-full text-[11px] font-extrabold text-[#0b1020]"
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[11px] font-semibold text-[#0b0d14]"
                 >
                   {meta.badge}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <b className="block truncate text-[14px] font-bold text-white">
+                  <b className="block truncate text-[14px] font-medium text-white">
                     {idx + 1}. {isSelf ? 'You' : meta.shortName}
                   </b>
-                  <span className="block truncate text-[12px] text-[#8d97ae]">
+                  <span className="block truncate text-[12px] text-[#8a91a3]">
                     {formatDistance(r.distanceKm)} · {r.score.toLocaleString()}
                     {showBetting && isFiniteNum(r.chipDelta)
                       ? ` · ${formatChipDelta(r.chipDelta).text}c`
@@ -362,16 +359,16 @@ export function RoundSummaryOverlay({
               return (
                 <div
                   key={r.playerId}
-                  className="rounded-xl border border-white/10 bg-[#0b1020] p-3 text-xs"
+                  className="rounded-xl border border-white/10 bg-[#0b0d14] p-3 text-xs"
                 >
-                  <div className="mb-1 flex items-center gap-2 font-bold text-white">
+                  <div className="mb-1 flex items-center gap-2 font-medium text-white">
                     <span
                       className="h-2.5 w-2.5 rounded-full"
                       style={{ backgroundColor: meta.color }}
                     />
                     <span>{meta.shortName}</span>
                   </div>
-                  <p className="text-[#8d97ae] leading-relaxed">
+                  <p className="text-[#8a91a3] leading-relaxed">
                     {r.guess?.reasoning}
                   </p>
                 </div>
@@ -387,7 +384,7 @@ export function RoundSummaryOverlay({
               <button
                 type="button"
                 onClick={() => setShowReasonings((v) => !v)}
-                className="inline-flex items-center gap-1.5 text-[14px] font-medium text-[#8d97ae] hover:text-white transition"
+                className="inline-flex items-center gap-1.5 text-[14px] font-medium text-[#8a91a3] hover:text-white transition"
               >
                 <MessageSquare className="h-4 w-4" />
                 <span>See how the AIs reasoned</span>
@@ -405,7 +402,7 @@ export function RoundSummaryOverlay({
               type="button"
               disabled={advancing}
               onClick={onNextRound}
-              className="inline-flex items-center gap-2 rounded-[14px] bg-[#22c55e] px-7 py-3.5 text-[16px] font-bold text-[#052e14] shadow-[0_8px_24px_rgba(34,197,94,0.25)] hover:bg-[#34d369] disabled:opacity-60 transition"
+              className="inline-flex items-center gap-2 rounded-[14px] bg-[#ff7a2f] px-7 py-3.5 text-[16px] font-medium text-[#1f0e03] hover:bg-[#ff8d4d] disabled:opacity-60 transition"
             >
               <span>
                 {advancing
@@ -419,9 +416,9 @@ export function RoundSummaryOverlay({
           ) : (
             <div
               role="status"
-              className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-[#18223a] px-4 py-2.5 text-sm font-semibold text-[#8d97ae]"
+              className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-[#1a1e28] px-4 py-2.5 text-sm font-semibold text-[#8a91a3]"
             >
-              <Clock className="h-4 w-4 text-[#fbbf24]" />
+              <Clock className="h-4 w-4 text-[#a3a9b8]" />
               <span>
                 {roundNumber >= totalRounds
                   ? 'Waiting for host to open final results…'

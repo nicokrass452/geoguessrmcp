@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { X } from 'lucide-react';
 import type {
   HealthInfo,
   MoveDirection,
@@ -434,11 +435,11 @@ export default function App() {
   // 0. Auto-Joining Room via URL Link (?room=CODE)
   if (autoJoiningCode) {
     return (
-      <div className="geo-bg flex h-full w-full flex-col items-center justify-center text-[#eef1f8] gap-3">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#22c55e] border-t-transparent" />
+      <div className="geo-bg flex h-full w-full flex-col items-center justify-center text-[#eef0f5] gap-3">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#ff7a2f] border-t-transparent" />
         <p className="text-sm font-semibold">
           Joining room{' '}
-          <span className="font-mono text-[#22c55e]">{autoJoiningCode}</span>…
+          <span className="font-mono text-[#ff7a2f]">{autoJoiningCode}</span>…
         </p>
       </div>
     );
@@ -468,11 +469,11 @@ export default function App() {
   // 2. Loading Backend State
   if (!state) {
     return (
-      <div className="geo-bg flex h-full w-full flex-col items-center justify-center text-[#eef1f8] gap-3">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#22c55e] border-t-transparent" />
-        <p className="text-sm text-[#8d97ae]">Connecting to GeoArena…</p>
+      <div className="geo-bg flex h-full w-full flex-col items-center justify-center text-[#eef0f5] gap-3">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#ff7a2f] border-t-transparent" />
+        <p className="text-sm text-[#8a91a3]">Connecting to GeoArena…</p>
         {error && (
-          <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-xs text-rose-300">
+          <p className="rounded-xl border border-[#e5484d]/30 bg-[#e5484d]/10 px-4 py-2 text-xs text-[#f2777b]">
             {error}
           </p>
         )}
@@ -482,7 +483,7 @@ export default function App() {
             syncUrlRoomCode(null);
             setView('home');
           }}
-          className="mt-2 rounded-xl border border-white/15 bg-[#121a2e] px-4 py-2 text-sm font-semibold text-white hover:bg-[#18223a]"
+          className="mt-2 rounded-xl border border-white/15 bg-[#11141c] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1a1e28]"
         >
           Back to home
         </button>
@@ -552,7 +553,7 @@ export default function App() {
   const playAgainModels = state.agyRunner?.selectedModels ?? [];
 
   return (
-    <main className="relative h-full w-full overflow-hidden bg-[#0b1020]">
+    <main className="relative h-full w-full overflow-hidden bg-[#0b0d14]">
       {state.mode === 'spectator' ? (
         <SpectatorStage
           roundNumber={state.currentRoundNumber}
@@ -629,14 +630,15 @@ export default function App() {
         )}
 
       {error && (
-        <div className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 flex items-center gap-3 rounded-xl border border-rose-500/40 bg-[#121a2e]/95 px-4 py-2.5 text-sm text-rose-200 shadow-2xl">
+        <div className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 flex items-center gap-3 rounded-xl border border-[#e5484d]/40 bg-[#11141c]/95 px-4 py-2.5 text-sm text-[#eef0f5] shadow-2xl">
           <span>{error}</span>
           <button
             type="button"
             onClick={() => setError(null)}
-            className="font-bold text-[#8d97ae] hover:text-white"
+            aria-label="Dismiss"
+            className="grid h-6 w-6 place-items-center rounded-md text-[#8a91a3] hover:bg-white/10 hover:text-white"
           >
-            ✕
+            <X className="h-4 w-4" strokeWidth={1.5} />
           </button>
         </div>
       )}

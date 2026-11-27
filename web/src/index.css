@@ -1,21 +1,36 @@
 @import "tailwindcss";
 @import "leaflet/dist/leaflet.css";
 
+/*
+ * GeoArena tokens
+ * World: orienteering at night. Ink-tinted near-neutral surfaces,
+ * one control-flag orange accent, coordinates and distances in mono.
+ */
 :root {
-  --bg: #0b1020;
-  --panel: #121a2e;
-  --panel-2: #18223a;
-  --line: rgba(255, 255, 255, 0.08);
-  --line-2: rgba(255, 255, 255, 0.14);
-  --text: #eef1f8;
-  --muted: #8d97ae;
-  --accent: #22c55e;
-  --accent-ink: #052e14;
-  --amber: #fbbf24;
+  --bg-deep: #07080d;
+  --bg: #0b0d14;
+  --panel: #11141c;
+  --panel-2: #1a1e28;
+  --panel-3: #222734;
+  --line: rgba(238, 240, 245, 0.08);
+  --line-2: rgba(238, 240, 245, 0.14);
+  --text: #eef0f5;
+  --text-2: #a3a9b8;
+  --muted: #8a91a3;
+  --accent: #ff7a2f;
+  --accent-hover: #ff8d4d;
+  --accent-ink: #1f0e03;
+  --positive: #4cc38a;
+  --negative: #e5484d;
   --you: #60a5fa;
-  --gemini: #a78bfa;
-  --claude: #f59e0b;
-  --gpt: #2dd4bf;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@theme {
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SFMono-Regular", Consolas,
+    monospace;
 }
 
 @layer base {
@@ -29,10 +44,10 @@
     overflow: hidden;
     background-color: var(--bg);
     color: var(--text);
-    font-family: "Segoe UI", Inter, ui-sans-serif, system-ui, -apple-system,
-      BlinkMacSystemFont, Roboto, sans-serif;
+    font-family: var(--font-sans);
     font-size: 15px;
     line-height: 1.45;
+    font-feature-settings: "ss01";
   }
 
   button:not(:disabled),
@@ -43,12 +58,28 @@
   button:disabled {
     cursor: not-allowed;
   }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* Press feedback for every pressable thing */
+  button:not(:disabled),
+  [role="button"] {
+    transition-property: color, background-color, border-color, opacity,
+      transform, box-shadow;
+    transition-duration: 160ms;
+    transition-timing-function: var(--ease-out);
+  }
+  button:not(:disabled):active,
+  [role="button"]:active {
+    transform: scale(0.97);
+  }
 }
 
 .geo-bg {
-  background:
-    radial-gradient(1200px 600px at 70% -10%, #17305a 0%, transparent 60%),
-    var(--bg);
+  background: var(--bg);
 }
 
 .geo-card {
@@ -58,15 +89,47 @@
 }
 
 .geo-glass {
-  background: rgba(11, 16, 32, 0.78);
+  background: rgba(11, 13, 20, 0.84);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+}
+
+/* Signature: coordinates, distances and scores set in mono */
+.geo-coord {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* One entrance per screen: short fade and rise */
+@keyframes geo-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+.geo-rise {
+  animation: geo-rise 400ms var(--ease-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .geo-rise {
+    animation: none;
+  }
+  button:not(:disabled):active,
+  [role="button"]:active {
+    transform: none;
+  }
 }
 
 /* Keep Leaflet internal panes cleanly contained under floating HUD overlays */
 .leaflet-container {
-  background: #0f2a44;
+  background: #0e1520;
   font-family: inherit;
   z-index: 1;
 }
@@ -78,7 +141,7 @@
 
 .custom-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: rgba(141, 151, 174, 0.35) transparent;
+  scrollbar-color: rgba(138, 145, 163, 0.35) transparent;
 }
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
@@ -88,16 +151,16 @@
   background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(141, 151, 174, 0.3);
+  background: rgba(138, 145, 163, 0.3);
   border-radius: 9999px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(141, 151, 174, 0.55);
+  background: rgba(138, 145, 163, 0.55);
 }
 
 .page-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: rgba(141, 151, 174, 0.45) rgba(11, 16, 32, 0.75);
+  scrollbar-color: rgba(138, 145, 163, 0.45) var(--bg);
   scrollbar-gutter: stable;
 }
 .page-scrollbar::-webkit-scrollbar {
@@ -105,13 +168,13 @@
   height: 10px;
 }
 .page-scrollbar::-webkit-scrollbar-track {
-  background: rgba(11, 16, 32, 0.75);
+  background: var(--bg);
 }
 .page-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(141, 151, 174, 0.4);
+  background: rgba(138, 145, 163, 0.4);
   border-radius: 9999px;
-  border: 2px solid rgba(11, 16, 32, 0.75);
+  border: 2px solid var(--bg);
 }
 .page-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(141, 151, 174, 0.65);
+  background: rgba(138, 145, 163, 0.65);
 }

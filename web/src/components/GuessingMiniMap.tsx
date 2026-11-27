@@ -302,7 +302,7 @@ export function GuessingMiniMap({
       : expanded
         ? showBettingControls
           ? 'w-[min(460px,calc(100vw-2rem))] h-[420px]'
-          : 'w-[min(460px,calc(100vw-2rem))] h-[350px]'
+          : 'w-[min(460px,calc(100vw-2rem))] h-[352px]'
         : showBettingControls
           ? 'w-[min(420px,calc(100vw-2rem))] h-[360px]'
           : 'w-[min(420px,calc(100vw-2rem))] h-[300px]';
@@ -324,7 +324,7 @@ export function GuessingMiniMap({
       data-testid="guess-minimap"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className={`geo-glass absolute bottom-4 right-4 z-30 flex max-h-[calc(100vh-6rem)] max-w-[calc(100vw-2rem)] flex-col overflow-hidden p-0 shadow-2xl transition-all duration-200 ${boxSizeClass}`}
+      className={`geo-glass absolute bottom-4 right-4 z-30 flex max-h-[calc(100vh-6rem)] max-w-[calc(100vw-2rem)] flex-col overflow-hidden p-0 shadow-2xl transition-[border-color,opacity] duration-200 ${boxSizeClass}`}
     >
       {collapsed ? (
         <button
@@ -333,10 +333,10 @@ export function GuessingMiniMap({
           className="flex h-full w-full items-center justify-between px-4 text-sm font-semibold text-white hover:bg-white/5 transition"
         >
           <span className="flex items-center gap-2">
-            <MapPin className="h-4 w-4 text-[#22c55e]" />
+            <MapPin className="h-4 w-4 text-[#ff7a2f]" />
             <span>Open guess map</span>
           </span>
-          <ChevronUp className="h-4 w-4 text-[#8d97ae]" />
+          <ChevronUp className="h-4 w-4 text-[#8a91a3]" />
         </button>
       ) : (
         <>
@@ -349,7 +349,7 @@ export function GuessingMiniMap({
                 type="button"
                 onClick={() => setMaximized((m) => !m)}
                 title={maximized ? 'Restore map' : 'Maximize map'}
-                className="grid h-8 w-8 place-items-center rounded-lg bg-[#0b1020]/85 text-[#eef1f8] border border-white/15 hover:bg-[#18223a] transition"
+                className="grid h-8 w-8 place-items-center rounded-lg bg-[#0b0d14]/85 text-[#eef0f5] border border-white/15 hover:bg-[#1a1e28] transition"
               >
                 {maximized ? (
                   <Minimize2 className="h-3.5 w-3.5" />
@@ -363,8 +363,8 @@ export function GuessingMiniMap({
                 title={pinnedOpen ? 'Unpin map size' : 'Pin map expanded'}
                 className={`grid h-8 w-8 place-items-center rounded-lg border transition ${
                   pinnedOpen
-                    ? 'border-[#22c55e] bg-[#22c55e]/20 text-[#22c55e]'
-                    : 'border-white/15 bg-[#0b1020]/85 text-[#eef1f8] hover:bg-[#18223a]'
+                    ? 'border-[#ff7a2f] bg-[#ff7a2f]/20 text-[#ff7a2f]'
+                    : 'border-white/15 bg-[#0b0d14]/85 text-[#eef0f5] hover:bg-[#1a1e28]'
                 }`}
               >
                 <Pin className="h-3.5 w-3.5" />
@@ -373,7 +373,7 @@ export function GuessingMiniMap({
                 type="button"
                 onClick={() => setCollapsed(true)}
                 title="Collapse map"
-                className="grid h-8 w-8 place-items-center rounded-lg bg-[#0b1020]/85 text-[#eef1f8] border border-white/15 hover:bg-[#18223a] transition"
+                className="grid h-8 w-8 place-items-center rounded-lg bg-[#0b0d14]/85 text-[#eef0f5] border border-white/15 hover:bg-[#1a1e28] transition"
               >
                 <ChevronDown className="h-3.5 w-3.5" />
               </button>
@@ -381,10 +381,10 @@ export function GuessingMiniMap({
           </div>
 
           {/* Footer: Optional Betting + Big Guess CTA */}
-          <div className="border-t border-white/10 bg-[#0b1020]/90 p-3 flex flex-col gap-2.5">
+          <div className="border-t border-white/10 bg-[#0b0d14]/90 p-3 flex flex-col gap-2.5">
             {hasGuessed ? (
               <div className="flex w-full items-center justify-between gap-2">
-                <div className="flex min-w-0 items-center gap-2 text-sm text-[#22c55e] font-semibold">
+                <div className="flex min-w-0 items-center gap-2 text-sm text-[#ff7a2f] font-semibold">
                   <CheckCircle2 className="h-4 w-4 shrink-0" />
                   <span className="truncate">
                     Guess locked
@@ -398,7 +398,7 @@ export function GuessingMiniMap({
                   <button
                     type="button"
                     onClick={onForceEndRound}
-                    className="shrink-0 rounded-xl border border-amber-400/40 bg-amber-500/15 px-3 py-1.5 text-xs font-bold text-amber-200 hover:bg-amber-500/25 transition"
+                    className="shrink-0 rounded-xl border border-white/[0.08] bg-[#1a1e28] px-3 py-1.5 text-xs font-medium text-[#e3b65c] hover:bg-[#222734] transition"
                   >
                     End round now
                   </button>
@@ -407,13 +407,13 @@ export function GuessingMiniMap({
             ) : (
               <>
                 {bettingEnabled && (
-                  <div className="rounded-xl border border-white/10 bg-[#121a2e] px-3 py-2 space-y-1.5">
+                  <div className="rounded-xl border border-white/10 bg-[#11141c] px-3 py-2 space-y-1.5">
                     <div className="flex items-center justify-between text-xs">
                       <span className="flex items-center gap-1.5 font-semibold text-white">
-                        <Coins className="h-3.5 w-3.5 text-[#fbbf24]" />
+                        <Coins className="h-3.5 w-3.5 text-[#a3a9b8]" />
                         <span>Wager</span>
                       </span>
-                      <span className="font-mono text-xs font-bold text-[#fbbf24]">
+                      <span className="font-mono text-xs font-medium text-[#e3b65c]">
                         {safeChips.toLocaleString()} chips
                       </span>
                     </div>
@@ -430,7 +430,7 @@ export function GuessingMiniMap({
                         onChange={(e) =>
                           setWager(clampWager(Number(e.target.value), safeChips))
                         }
-                        className="h-1.5 flex-1 cursor-pointer accent-[#22c55e] disabled:opacity-40"
+                        className="h-1.5 flex-1 cursor-pointer accent-[#ff7a2f] disabled:opacity-40"
                       />
                       <input
                         type="number"
@@ -448,7 +448,7 @@ export function GuessingMiniMap({
                           }
                           setWager(clampWager(Number(raw), safeChips));
                         }}
-                        className="w-16 rounded-lg border border-white/15 bg-[#0b1020] px-2 py-0.5 text-right font-mono text-xs font-bold text-[#fbbf24] focus:border-[#22c55e] focus:outline-none"
+                        className="w-16 rounded-lg border border-white/15 bg-[#0b0d14] px-2 py-0.5 text-right font-mono text-xs font-medium text-[#e3b65c] focus:border-[#ff7a2f] focus:outline-none"
                       />
                     </div>
 
@@ -466,8 +466,8 @@ export function GuessingMiniMap({
                             }
                             className={`rounded-md border px-1 py-0.5 text-[11px] font-semibold transition ${
                               isActive
-                                ? 'border-[#22c55e] bg-[#22c55e]/20 text-white'
-                                : 'border-white/10 bg-[#0b1020] text-[#8d97ae] hover:text-white'
+                                ? 'border-[#ff7a2f] bg-[#ff7a2f]/20 text-white'
+                                : 'border-white/10 bg-[#0b0d14] text-[#8a91a3] hover:text-white'
                             } disabled:opacity-40`}
                           >
                             {preset.label}
@@ -482,7 +482,7 @@ export function GuessingMiniMap({
                   type="button"
                   disabled={!selectedCoords || submitting}
                   onClick={handleSubmit}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#22c55e] px-4 py-3.5 text-[16px] font-bold text-[#052e14] shadow-[0_8px_24px_rgba(34,197,94,0.25)] hover:bg-[#34d369] disabled:bg-[#18223a] disabled:text-[#8d97ae] disabled:shadow-none transition"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#ff7a2f] px-4 py-3.5 text-[16px] font-medium text-[#1f0e03] hover:bg-[#ff8d4d] disabled:bg-[#1a1e28] disabled:text-[#8a91a3] disabled:shadow-none transition"
                 >
                   <MapPin className="h-4 w-4" />
                   <span>

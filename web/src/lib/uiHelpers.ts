@@ -85,27 +85,24 @@ export const LOCATION_META: Record<
   {
     title: string;
     subtitle: string;
-    emoji: string;
-    gradient: string;
+    /** Sample spots shown on the map tile, as [lon, lat]. */
+    dots: Array<[number, number]>;
   }
 > = {
   standard: {
     title: 'Whole world',
     subtitle: 'Capitals, coastlines, streets & passes',
-    emoji: '🌍',
-    gradient: 'linear-gradient(135deg, #1e3a8a, #065f46)',
+    dots: [[-74, 40.7], [-58.4, -34.6], [2.35, 48.86], [18.4, -33.9], [77.2, 28.6], [139.7, 35.7], [151.2, -33.9], [-21.9, 64.1]],
   },
   big_cities: {
     title: 'Big cities',
     subtitle: 'Dense streets, signs & transit',
-    emoji: '🏙',
-    gradient: 'linear-gradient(135deg, #374151, #b45309)',
+    dots: [[-74, 40.7], [-118.2, 34], [-46.6, -23.5], [-0.1, 51.5], [31.2, 30], [72.9, 19.1], [121.5, 31.2], [139.7, 35.7], [103.8, 1.35]],
   },
   mountain_regions: {
     title: 'Mountains',
     subtitle: 'Alpine valleys, fjords & passes',
-    emoji: '⛰',
-    gradient: 'linear-gradient(135deg, #1f2937, #4d7c0f)',
+    dots: [[-106, 39.5], [-70, -33], [-72, -13.5], [10, 46.5], [7, 61.5], [86.9, 28], [74, 36], [170, -43.5]],
   },
 };
 

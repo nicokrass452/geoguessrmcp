@@ -144,20 +144,20 @@ export function AgentHud({
             >
               <div
                 style={{ backgroundColor: isSelf ? '#60a5fa' : h.color }}
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[12px] font-extrabold text-[#0b1020]"
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[12px] font-semibold text-[#0b0d14]"
               >
                 {getPlayerInitials(h.name)}
               </div>
-              <span className="flex-1 truncate text-[14px] font-semibold text-[#eef1f8]">
+              <span className="flex-1 truncate text-[14px] font-semibold text-[#eef0f5]">
                 {isSelf ? 'You' : h.name}
               </span>
               <span
                 className={`text-[12px] font-semibold ${
-                  h.hasGuessed ? 'text-[#22c55e]' : 'text-[#8d97ae]'
+                  h.hasGuessed ? 'text-[#ff7a2f]' : 'text-[#8a91a3]'
                 }`}
               >
                 {h.hasGuessed
-                  ? '✓ guessed'
+                  ? 'Guessed'
                   : h.connected
                     ? 'exploring'
                     : 'offline'}
@@ -183,20 +183,20 @@ export function AgentHud({
             roundStatus === 'active' &&
             Boolean(agent.model);
 
-          let statusText = 'thinking…';
-          let statusCls = 'text-[#8d97ae]';
+          let statusText = 'Thinking…';
+          let statusCls = 'text-[#8a91a3]';
           if (agent.hasGuessed) {
-            statusText = '✓ guessed';
-            statusCls = 'text-[#22c55e]';
+            statusText = 'Guessed';
+            statusCls = 'text-[#ff7a2f]';
           } else if (run?.lastStatus === 'timeout') {
             statusText = 'timed out';
-            statusCls = 'text-amber-300';
+            statusCls = 'text-[#e3b65c]';
           } else if (run?.lastStatus === 'error') {
             statusText = 'stalled';
-            statusCls = 'text-rose-300';
+            statusCls = 'text-[#f2777b]';
           } else if (!agent.connected) {
             statusText = 'waiting';
-            statusCls = 'text-[#8d97ae]';
+            statusCls = 'text-[#8a91a3]';
           }
 
           return (
@@ -206,11 +206,11 @@ export function AgentHud({
             >
               <div
                 style={{ backgroundColor: meta.color }}
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[12px] font-extrabold text-[#0b1020]"
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[12px] font-semibold text-[#0b0d14]"
               >
                 {meta.badge}
               </div>
-              <span className="flex-1 truncate text-[14px] font-semibold text-[#eef1f8]">
+              <span className="flex-1 truncate text-[14px] font-semibold text-[#eef0f5]">
                 {meta.shortName}
               </span>
               {showRetry && agent.model ? (
@@ -219,7 +219,7 @@ export function AgentHud({
                   disabled={agyBusy}
                   onClick={() => handleSummonNow([agent.model!])}
                   title={run?.lastMessage || 'Retry AI turn'}
-                  className="inline-flex items-center gap-1 rounded-lg border border-amber-400/40 bg-amber-500/15 px-2 py-0.5 text-[11px] font-bold text-amber-200 hover:bg-amber-500/25 transition"
+                  className="inline-flex items-center gap-1 rounded-lg border border-white/[0.08] bg-[#1a1e28] px-2 py-0.5 text-[11px] font-medium text-[#e3b65c] hover:bg-[#222734] transition"
                 >
                   <RotateCw className="h-2.5 w-2.5" />
                   <span>Retry</span>
@@ -234,7 +234,7 @@ export function AgentHud({
         })}
 
         {showAiControls && agents.length === 0 && (
-          <div className="px-2 py-2 text-xs text-[#8d97ae]">
+          <div className="px-2 py-2 text-xs text-[#8a91a3]">
             No AI opponents active yet.
           </div>
         )}
@@ -246,12 +246,12 @@ export function AgentHud({
           <button
             type="button"
             onClick={() => setDebugOpen((v) => !v)}
-            className="flex w-full items-center justify-between px-3.5 py-2 text-xs font-semibold text-[#8d97ae] hover:bg-white/[0.04] hover:text-white transition"
+            className="flex w-full items-center justify-between px-3.5 py-2 text-xs font-semibold text-[#8a91a3] hover:bg-white/[0.04] hover:text-white transition"
           >
             <span className="flex items-center gap-1.5">
               <span>AI debug</span>
               {runningCount > 0 && (
-                <Loader2 className="h-3 w-3 animate-spin text-[#22c55e]" />
+                <Loader2 className="h-3 w-3 animate-spin text-[#ff7a2f]" />
               )}
             </span>
             {debugOpen ? (
@@ -262,21 +262,21 @@ export function AgentHud({
           </button>
 
           {debugOpen && (
-            <div className="max-h-[340px] overflow-y-auto custom-scrollbar border-t border-white/10 bg-[#0b1020]/70 p-3 space-y-3 text-xs">
+            <div className="max-h-[340px] overflow-y-auto custom-scrollbar border-t border-white/10 bg-[#0b0d14]/70 p-3 space-y-3 text-xs">
               {agyRunner && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#8d97ae]">
+                    <span className="text-[12px] text-[#8a91a3]">
                       Auto-AI Opponents
                     </span>
                     <button
                       type="button"
                       disabled={!agyRunner.available || agyBusy}
                       onClick={toggleAutoPlay}
-                      className={`rounded-full border px-2 py-0.5 text-[11px] font-bold transition ${
+                      className={`rounded-full border px-2 py-0.5 text-[11px] font-medium transition ${
                         agyRunner.autoPlayEnabled
-                          ? 'border-[#22c55e]/50 bg-[#22c55e]/20 text-[#22c55e]'
-                          : 'border-white/15 bg-[#18223a] text-[#8d97ae]'
+                          ? 'border-[#ff7a2f]/50 bg-[#ff7a2f]/20 text-[#ff7a2f]'
+                          : 'border-white/15 bg-[#1a1e28] text-[#8a91a3]'
                       }`}
                     >
                       {agyRunner.autoPlayEnabled ? 'Auto: ON' : 'Auto: OFF'}
@@ -297,8 +297,8 @@ export function AgentHud({
                               onClick={() => toggleModel(m.id)}
                               className={`rounded-lg border px-2 py-1 text-[11px] font-semibold transition ${
                                 selected
-                                  ? 'border-[#22c55e]/60 bg-[#22c55e]/15 text-white'
-                                  : 'border-white/10 bg-[#121a2e] text-[#8d97ae] hover:text-white'
+                                  ? 'border-[#ff7a2f]/60 bg-[#ff7a2f]/15 text-white'
+                                  : 'border-white/10 bg-[#11141c] text-[#8a91a3] hover:text-white'
                               }`}
                             >
                               {meta.shortName}
@@ -318,7 +318,7 @@ export function AgentHud({
                                 maxStepsPerRound: Number(e.target.value),
                               })
                             }
-                            className="rounded-lg border border-white/15 bg-[#121a2e] px-1.5 py-1 text-[11px] text-white"
+                            className="rounded-lg border border-white/15 bg-[#11141c] px-1.5 py-1 text-[11px] text-white"
                           >
                             <option value={3}>3 moves</option>
                             <option value={5}>5 moves</option>
@@ -334,7 +334,7 @@ export function AgentHud({
                                 timeoutSec: Number(e.target.value),
                               })
                             }
-                            className="rounded-lg border border-white/15 bg-[#121a2e] px-1.5 py-1 text-[11px] text-white"
+                            className="rounded-lg border border-white/15 bg-[#11141c] px-1.5 py-1 text-[11px] text-white"
                           >
                             <option value={60}>60s</option>
                             <option value={120}>120s</option>
@@ -348,7 +348,7 @@ export function AgentHud({
                               type="button"
                               disabled={agyBusy}
                               onClick={handleStopRuns}
-                              className="inline-flex items-center gap-1 rounded-lg border border-rose-400/40 bg-rose-500/20 px-2 py-1 text-[11px] font-bold text-rose-200 hover:bg-rose-500/30"
+                              className="inline-flex items-center gap-1 rounded-lg border border-[#e5484d]/30 bg-[#e5484d]/10 px-2 py-1 text-[11px] font-medium text-[#f2777b] hover:bg-rose-500/30"
                             >
                               <Square className="h-2.5 w-2.5 fill-current" />
                               <span>Stop</span>
@@ -362,7 +362,7 @@ export function AgentHud({
                               agyRunner.selectedModels.length === 0
                             }
                             onClick={() => handleSummonNow()}
-                            className="inline-flex items-center gap-1 rounded-lg bg-[#22c55e] px-2.5 py-1 text-[11px] font-bold text-[#052e14] hover:bg-[#34d369] disabled:opacity-40"
+                            className="inline-flex items-center gap-1 rounded-lg bg-[#ff7a2f] px-2.5 py-1 text-[11px] font-medium text-[#1f0e03] hover:bg-[#ff8d4d] disabled:opacity-40"
                           >
                             <Play className="h-2.5 w-2.5 fill-current" />
                             <span>Summon</span>
@@ -377,7 +377,7 @@ export function AgentHud({
               {/* Telemetry & POV toggles */}
               {agents.length > 0 && (
                 <div className="space-y-1.5 border-t border-white/10 pt-2">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#8d97ae]">
+                  <div className="text-[12px] text-[#8a91a3]">
                     Camera &amp; Calls
                   </div>
                   {agents.map((agent) => {
@@ -391,7 +391,7 @@ export function AgentHud({
                           <div className="truncate font-semibold text-white text-[11px]">
                             {agent.name}
                           </div>
-                          <div className="font-mono text-[10px] text-[#8d97ae]">
+                          <div className="font-mono text-[10px] text-[#8a91a3]">
                             {Math.round(agent.camera.heading)}°{' '}
                             {headingToCompass(agent.camera.heading)} · z
                             {agent.camera.zoom.toFixed(1)} ·{' '}
@@ -410,8 +410,8 @@ export function AgentHud({
                           title={isWatching ? 'Hide POV' : 'Watch POV'}
                           className={`rounded-lg border p-1 transition ${
                             isWatching
-                              ? 'border-[#22c55e] bg-[#22c55e]/20 text-[#22c55e]'
-                              : 'border-white/10 bg-[#121a2e] text-[#8d97ae] hover:text-white'
+                              ? 'border-[#ff7a2f] bg-[#ff7a2f]/20 text-[#ff7a2f]'
+                              : 'border-white/10 bg-[#11141c] text-[#8a91a3] hover:text-white'
                           }`}
                         >
                           {isWatching ? (
@@ -427,8 +427,8 @@ export function AgentHud({
               )}
 
               {watchedAgent && (
-                <div className="rounded-lg border border-white/10 bg-[#121a2e] p-1.5">
-                  <div className="mb-1 flex items-center justify-between text-[10px] text-[#8d97ae]">
+                <div className="rounded-lg border border-white/10 bg-[#11141c] p-1.5">
+                  <div className="mb-1 flex items-center justify-between text-[10px] text-[#8a91a3]">
                     <span className="font-semibold text-white">
                       {watchedAgent.name} POV
                     </span>
@@ -436,7 +436,7 @@ export function AgentHud({
                       {Math.round(watchedAgent.camera.heading)}°
                     </span>
                   </div>
-                  <div className="aspect-[4/3] w-full overflow-hidden rounded bg-[#0b1020]">
+                  <div className="aspect-[4/3] w-full overflow-hidden rounded bg-[#0b0d14]">
                     <img
                       src={`/api/agents/${watchedAgent.id}/viewport.jpg?v=${watchedAgent.frameVersion}`}
                       alt={`${watchedAgent.name} viewport`}
@@ -449,15 +449,15 @@ export function AgentHud({
               {/* Activity feed */}
               <div className="space-y-1.5 border-t border-white/10 pt-2">
                 <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-[#8d97ae]">
-                    <Activity className="h-3 w-3 text-[#22c55e]" />
+                  <span className="flex items-center gap-1 text-[12px] text-[#8a91a3]">
+                    <Activity className="h-3 w-3 text-[#ff7a2f]" />
                     <span>Activity</span>
                   </span>
                   {onOpenDeveloper && (
                     <button
                       type="button"
                       onClick={onOpenDeveloper}
-                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#8d97ae] hover:text-white"
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#8a91a3] hover:text-white"
                     >
                       <Plug className="h-3 w-3" />
                       <span>Connect MCP</span>
@@ -466,7 +466,7 @@ export function AgentHud({
                 </div>
 
                 {activityFeed.length === 0 ? (
-                  <div className="text-[11px] text-[#8d97ae] italic">
+                  <div className="text-[11px] text-[#8a91a3] italic">
                     No activity yet.
                   </div>
                 ) : (
@@ -479,7 +479,7 @@ export function AgentHud({
                         <span className="font-semibold text-white">
                           {evt.playerName}:
                         </span>{' '}
-                        <span className="text-[#8d97ae]">{evt.summary}</span>
+                        <span className="text-[#8a91a3]">{evt.summary}</span>
                       </div>
                     ))}
                   </div>

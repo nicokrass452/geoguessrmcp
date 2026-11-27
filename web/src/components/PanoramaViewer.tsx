@@ -421,7 +421,7 @@ export function PanoramaViewer({
   };
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-[#0b1020]">
+    <div className="relative h-full w-full overflow-hidden bg-[#0b0d14]">
       {/* Main 360 Viewport */}
       {useMapillaryView && mapillaryImageId ? (
         <div ref={mapillaryContainerRef} className="h-full w-full" />
@@ -438,8 +438,8 @@ export function PanoramaViewer({
       )}
 
       {loadingTexture && !useMapillaryView && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-[#0b1020]/60 backdrop-blur-sm">
-          <div className="geo-glass px-4 py-2 text-sm text-[#eef1f8] shadow-xl">
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-[#0b0d14]/60 backdrop-blur-sm">
+          <div className="geo-glass px-4 py-2 text-sm text-[#eef0f5] shadow-xl">
             Loading street view…
           </div>
         </div>
@@ -494,7 +494,7 @@ export function PanoramaViewer({
                 disabled={disabled}
                 onClick={() => onMove({ nodeId: move.nodeId })}
                 title={`Move ${move.relativeDirection} (${move.distanceMeters}m)`}
-                className="geo-glass flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white hover:border-[#22c55e]/60 active:scale-95 disabled:opacity-50 transition"
+                className="geo-glass flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white hover:border-[#ff7a2f]/60 disabled:opacity-50 transition"
               >
                 <Navigation
                   style={{
@@ -503,7 +503,7 @@ export function PanoramaViewer({
                       move.bearingDeg
                     )}deg)`,
                   }}
-                  className="h-3.5 w-3.5 text-[#22c55e] transition-transform"
+                  className="h-3.5 w-3.5 text-[#ff7a2f] transition-transform"
                 />
                 <span className="capitalize">{move.relativeDirection}</span>
               </button>
@@ -512,7 +512,7 @@ export function PanoramaViewer({
         )}
 
         <div className="geo-glass relative h-9 w-56 overflow-hidden px-4">
-          <div className="absolute left-1/2 top-0 h-1.5 w-0.5 -translate-x-1/2 bg-[#22c55e]" />
+          <div className="absolute left-1/2 top-0 h-1.5 w-0.5 -translate-x-1/2 bg-[#ff7a2f]" />
           {COMPASS_MARKS.map((mark) => {
             const delta = angularDifference(camera.heading, mark.deg);
             if (Math.abs(delta) > 80) return null;
@@ -521,12 +521,12 @@ export function PanoramaViewer({
               <span
                 key={mark.label}
                 style={{ left: `${leftPct}%` }}
-                className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 font-mono text-[13px] tracking-widest ${
+                className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 font-mono text-[13px] ${
                   mark.label === 'N'
-                    ? 'font-extrabold text-[#f87171]'
+                    ? 'font-semibold text-[#f87171]'
                     : mark.major
-                      ? 'font-bold text-[#eef1f8]'
-                      : 'text-[11px] text-[#8d97ae]'
+                      ? 'font-medium text-[#eef0f5]'
+                      : 'text-[11px] text-[#8a91a3]'
                 }`}
               >
                 {mark.label}
@@ -539,7 +539,7 @@ export function PanoramaViewer({
           <button
             type="button"
             onClick={() => setUseMapillaryView((v) => !v)}
-            className="pointer-events-auto text-xs font-semibold text-[#8d97ae] hover:text-white transition"
+            className="pointer-events-auto text-xs font-semibold text-[#8a91a3] hover:text-white transition"
           >
             {useMapillaryView ? 'Use 360° Sphere' : 'Use MapillaryJS'}
           </button>

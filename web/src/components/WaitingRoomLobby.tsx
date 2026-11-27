@@ -1,3 +1,4 @@
+import { Logo } from './Logo';
 import { useEffect, useRef, useState } from 'react';
 import { Check, Link2, Pencil, Play, Plus, X } from 'lucide-react';
 import type { PublicGameState } from '@geoguessr-mcp/shared';
@@ -166,31 +167,26 @@ export function WaitingRoomLobby({
   };
 
   return (
-    <main className="geo-bg h-full w-full overflow-y-auto overflow-x-hidden page-scrollbar text-[#eef1f8]">
+    <main className="geo-bg h-full w-full overflow-y-auto overflow-x-hidden page-scrollbar text-[#eef0f5]">
       {/* Top Nav */}
       <nav className="mx-auto flex max-w-[1200px] items-center justify-between px-5 py-5 sm:px-10">
-        <div className="flex items-center gap-2.5 text-[18px] font-extrabold tracking-tight text-white">
-          <span className="grid h-[34px] w-[34px] place-items-center rounded-[10px] bg-gradient-to-br from-[#22c55e] to-[#3b82f6] text-lg">
-            🌍
-          </span>
-          <span>GeoArena</span>
-        </div>
+        <Logo />
 
         <button
           type="button"
           data-testid="quick-return-home"
           onClick={onLeaveRoom}
-          className="rounded-xl border border-white/15 bg-transparent px-3.5 py-2 text-[14px] font-semibold text-[#eef1f8] hover:bg-white/5 transition"
+          className="rounded-xl border border-white/15 bg-transparent px-3.5 py-2 text-[14px] font-semibold text-[#eef0f5] hover:bg-white/5 transition"
         >
           Leave room
         </button>
       </nav>
 
       <div className="mx-auto max-w-[980px] px-5 pt-2 pb-12 sm:px-12">
-        <h1 className="text-[30px] font-extrabold tracking-[-0.02em] text-white">
+        <h1 className="text-[30px] font-semibold tracking-[-0.02em] text-white">
           Waiting for players…
         </h1>
-        <div className="mt-1 mb-5 text-[15px] text-[#8d97ae]">
+        <div className="mt-1 mb-5 text-[15px] text-[#8a91a3]">
           {LOCATION_META[state.locationMode].title} · {state.totalRounds} rounds
           · {formatDurationLabel(state.roundDurationSec)} per round
           {state.bettingEnabled ? ' · Betting on' : ''}
@@ -200,7 +196,7 @@ export function WaitingRoomLobby({
               <button
                 type="button"
                 onClick={onOpenEditRules}
-                className="underline text-[#eef1f8] hover:text-[#22c55e] transition"
+                className="underline text-[#eef0f5] hover:text-[#ff7a2f] transition"
               >
                 Edit
               </button>
@@ -208,10 +204,10 @@ export function WaitingRoomLobby({
           )}
         </div>
 
-        <div className="grid gap-[22px] md:grid-cols-2">
+        <div className="grid gap-6 md:grid-cols-2">
           {/* Left Invite Card */}
           <div className="geo-card p-7 text-center flex flex-col justify-center">
-            <small className="text-[12px] font-bold uppercase tracking-[0.1em] text-[#8d97ae]">
+            <small className="text-[12px] font-medium text-[#8a91a3]">
               Room code
             </small>
 
@@ -221,31 +217,31 @@ export function WaitingRoomLobby({
               aria-label={`Room Code ${state.roomCode}`}
               title="Click to copy room code"
               onClick={handleCopyCode}
-              className="my-2 font-mono text-5xl sm:text-[64px] font-extrabold tracking-[0.18em] text-white hover:text-[#22c55e] transition select-all"
+              className="my-2 font-mono text-5xl sm:text-[64px] font-semibold tracking-[0.06em] tabular text-white hover:text-[#ff7a2f] transition select-all"
             >
               {state.roomCode}
             </button>
             {copiedCode && (
-              <div className="mb-2 text-xs font-semibold text-[#22c55e]">
+              <div className="mb-2 text-xs font-semibold text-[#ff7a2f]">
                 Room code copied!
               </div>
             )}
 
             {inviteUrl && (
-              <div className="mt-3 flex items-center gap-2 rounded-xl border border-white/15 bg-[#0b1020] p-1.5 pl-3.5">
-                <span className="flex-1 truncate text-left font-mono text-[13px] text-[#8d97ae] select-all">
+              <div className="mt-3 flex items-center gap-2 rounded-xl border border-white/15 bg-[#0b0d14] p-1.5 pl-3.5">
+                <span className="flex-1 truncate text-left font-mono text-[13px] text-[#8a91a3] select-all">
                   {inviteUrl.replace(/^https?:\/\//, '')}
                 </span>
                 <button
                   type="button"
                   data-testid="copy-invite-link"
                   onClick={handleCopyInviteLink}
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-[10px] bg-[#22c55e] px-4 py-2.5 text-[14px] font-bold text-[#052e14] shadow-[0_8px_24px_rgba(34,197,94,0.25)] hover:bg-[#34d369] transition"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-[10px] bg-[#ff7a2f] px-4 py-2.5 text-[14px] font-medium text-[#1f0e03] hover:bg-[#ff8d4d] transition"
                 >
                   {copiedLink ? (
                     <>
                       <Check className="h-4 w-4" />
-                      <span>Copied!</span>
+                      <span>Copied</span>
                     </>
                   ) : (
                     <>
@@ -257,14 +253,14 @@ export function WaitingRoomLobby({
               </div>
             )}
 
-            <p className="mt-3.5 text-[13px] text-[#8d97ae]">
+            <p className="mt-3.5 text-[13px] text-[#8a91a3]">
               Friends who open the link join automatically.
             </p>
           </div>
 
           {/* Right Players Card */}
           <div className="geo-card p-6">
-            <div className="text-[13px] font-bold uppercase tracking-[0.08em] text-[#8d97ae] mb-3">
+            <div className="text-[13px] font-medium text-[#8a91a3] mb-3">
               Players · {totalPlayers} / 8
             </div>
 
@@ -280,20 +276,20 @@ export function WaitingRoomLobby({
                       style={{
                         backgroundColor: isSelf ? '#60a5fa' : h.color,
                       }}
-                      className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[13px] font-extrabold text-[#0b1020]"
+                      className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[13px] font-semibold text-[#0b0d14]"
                     >
                       {getPlayerInitials(h.name)}
                     </div>
-                    <b className="flex-1 truncate text-[15px] font-bold text-white">
+                    <b className="flex-1 truncate text-[15px] font-medium text-white">
                       {h.name}
                     </b>
                     {isSelf && (
-                      <span className="rounded-full bg-[#60a5fa]/15 px-2.5 py-0.5 text-[12px] font-bold text-[#60a5fa]">
+                      <span className="rounded-md border border-white/[0.08] px-2 py-0.5 text-[12px] text-[#a3a9b8]">
                         You
                       </span>
                     )}
                     {h.isHost && (
-                      <span className="rounded-full bg-[#fbbf24]/15 px-2.5 py-0.5 text-[12px] font-bold text-[#fbbf24]">
+                      <span className="rounded-md border border-white/[0.08] px-2 py-0.5 text-[12px] text-[#a3a9b8]">
                         Host
                       </span>
                     )}
@@ -308,14 +304,14 @@ export function WaitingRoomLobby({
                 >
                   <div
                     style={{ backgroundColor: ai.color }}
-                    className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[13px] font-extrabold text-[#0b1020]"
+                    className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[13px] font-semibold text-[#0b0d14]"
                   >
                     {ai.badge}
                   </div>
-                  <b className="flex-1 truncate text-[15px] font-bold text-white">
+                  <b className="flex-1 truncate text-[15px] font-medium text-white">
                     {ai.name}
                   </b>
-                  <span className="rounded-full bg-[#a78bfa]/15 px-2.5 py-0.5 text-[12px] font-bold text-[#a78bfa]">
+                  <span className="rounded-md border border-white/[0.08] px-2 py-0.5 text-[12px] text-[#a3a9b8]">
                     AI
                   </span>
                   {isHost && ai.removable && (
@@ -324,7 +320,7 @@ export function WaitingRoomLobby({
                       disabled={aiBusy}
                       title="Remove AI player"
                       onClick={() => handleRemoveAiModel(ai.modelId)}
-                      className="rounded-lg p-1 text-[#8d97ae] hover:bg-white/10 hover:text-white transition"
+                      className="rounded-lg p-1 text-[#8a91a3] hover:bg-white/10 hover:text-white transition"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
@@ -340,10 +336,10 @@ export function WaitingRoomLobby({
                     onClick={() => setShowAddAi((v) => !v)}
                     className="flex w-full items-center gap-3 text-left group disabled:opacity-50"
                   >
-                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border-2 border-dashed border-white/20 text-[#8d97ae] group-hover:border-[#22c55e] group-hover:text-white transition">
+                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border-2 border-dashed border-white/20 text-[#8a91a3] group-hover:border-[#ff7a2f] group-hover:text-white transition">
                       <Plus className="h-4 w-4" />
                     </div>
-                    <span className="text-[15px] font-medium text-[#8d97ae] group-hover:text-white transition">
+                    <span className="text-[15px] font-medium text-[#8a91a3] group-hover:text-white transition">
                       Add an AI player
                     </span>
                   </button>
@@ -358,7 +354,7 @@ export function WaitingRoomLobby({
                             type="button"
                             disabled={aiBusy}
                             onClick={() => handleAddAiModel(m.id)}
-                            className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 bg-[#18223a] px-3 py-1.5 text-xs font-semibold text-white hover:border-[#22c55e] transition"
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 bg-[#1a1e28] px-3 py-1.5 text-xs font-semibold text-white hover:border-[#ff7a2f] transition"
                           >
                             <span
                               style={{ backgroundColor: meta.color }}
@@ -390,13 +386,13 @@ export function WaitingRoomLobby({
                   if (e.key === 'Enter') handleSaveName();
                   if (e.key === 'Escape') setEditingName(false);
                 }}
-                className="rounded-xl border border-white/20 bg-[#0b1020] px-3 py-2 text-sm text-white focus:border-[#22c55e] focus:outline-none"
+                className="rounded-xl border border-white/20 bg-[#0b0d14] px-3 py-2 text-sm text-white focus:border-[#ff7a2f] focus:outline-none"
               />
               <button
                 type="button"
                 disabled={busyAction || !nameDraft.trim()}
                 onClick={handleSaveName}
-                className="rounded-xl bg-[#18223a] border border-white/15 px-3.5 py-2 text-sm font-semibold text-white hover:bg-[#223050]"
+                className="rounded-xl bg-[#1a1e28] border border-white/15 px-3.5 py-2 text-sm font-semibold text-white hover:bg-[#223050]"
               >
                 Save
               </button>
@@ -406,14 +402,14 @@ export function WaitingRoomLobby({
                   setNameDraft(state.human.name);
                   setEditingName(false);
                 }}
-                className="rounded-xl px-2.5 py-2 text-sm text-[#8d97ae] hover:text-white"
+                className="rounded-xl px-2.5 py-2 text-sm text-[#8a91a3] hover:text-white"
               >
                 Cancel
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-2 text-[15px] text-[#8d97ae]">
-              <Pencil className="h-3.5 w-3.5 text-[#fbbf24]" />
+            <div className="flex items-center gap-2 text-[15px] text-[#8a91a3]">
+              <Pencil className="h-3.5 w-3.5 text-[#a3a9b8]" />
               <span>
                 Playing as <b className="text-white">{state.human.name}</b>
               </span>
@@ -421,7 +417,7 @@ export function WaitingRoomLobby({
               <button
                 type="button"
                 onClick={() => setEditingName(true)}
-                className="text-[#8d97ae] underline hover:text-white transition"
+                className="text-[#8a91a3] underline hover:text-white transition"
               >
                 change name
               </button>
@@ -434,13 +430,13 @@ export function WaitingRoomLobby({
               data-testid="lobby-start-match"
               disabled={busyAction}
               onClick={onStartMatch}
-              className="inline-flex items-center gap-2 rounded-[14px] bg-[#22c55e] px-7 py-3.5 text-[17px] font-bold text-[#052e14] shadow-[0_8px_24px_rgba(34,197,94,0.25)] hover:bg-[#34d369] disabled:opacity-50 transition"
+              className="inline-flex items-center gap-2 rounded-[14px] bg-[#ff7a2f] px-7 py-3.5 text-[17px] font-medium text-[#1f0e03] hover:bg-[#ff8d4d] disabled:opacity-50 transition"
             >
               <Play className="h-4 w-4 fill-current" />
               <span>{busyAction ? 'Starting…' : 'Start game'}</span>
             </button>
           ) : (
-            <div className="rounded-xl border border-white/15 bg-[#121a2e] px-5 py-3 text-sm font-semibold text-[#8d97ae]">
+            <div className="rounded-xl border border-white/15 bg-[#11141c] px-5 py-3 text-sm font-semibold text-[#8a91a3]">
               Waiting for host to start…
             </div>
           )}
